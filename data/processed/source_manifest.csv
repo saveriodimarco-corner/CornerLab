@@ -1,0 +1,4 @@
+season,source_file_name,source_url,source_row_count,file_sha256,import_timestamp,db_row_count,team_names_match,dates_match,corners_match,synthetic_fixture_count,test_fixture_count
+2023/24,serie_a_matches.csv,https://www.football-data.co.uk/italy/2023-2024.csv,380,9ef304e889c59af2e839a84c65867237a46c3c97264730d31fc9aff3b9a88b27,2026-08-02 15:42:58,380,True,True,True,0,0
+2024/25,serie_a_matches.csv,https://www.football-data.co.uk/italy/2024-2025.csv,380,9ef304e889c59af2e839a84c65867237a46c3c97264730d31fc9aff3b9a88b27,2026-08-02 15:42:58,380,True,True,True,0,0
+2025/26,serie_a_matches.csv,https://www.football-data.co.uk/italy/2025-2026.csv,380,9ef304e889c59af2e839a84c65867237a46c3c97264730d31fc9aff3b9a88b27,2026-08-02 15:42:58,380,True,True,True,0,0
