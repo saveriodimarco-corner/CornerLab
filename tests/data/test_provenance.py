@@ -38,3 +38,8 @@ def test_provenance_verification_matches_database_rows(tmp_path) -> None:
     assert (manifest["corners_match"] == True).all()
     assert (manifest["synthetic_fixture_count"] == 0).all()
     assert (manifest["test_fixture_count"] == 0).all()
+
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "https://www.football-data.co.uk/mmz4281/2324/I1.csv" in report_text
+    assert "https://www.football-data.co.uk/mmz4281/2425/I1.csv" in report_text
+    assert "https://www.football-data.co.uk/mmz4281/2526/I1.csv" in report_text

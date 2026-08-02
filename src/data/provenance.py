@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import csv
 import hashlib
-import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -12,9 +10,9 @@ import pandas as pd
 
 
 SOURCE_URLS = {
-    "2023/24": "https://www.football-data.co.uk/italy/2023-2024.csv",
-    "2024/25": "https://www.football-data.co.uk/italy/2024-2025.csv",
-    "2025/26": "https://www.football-data.co.uk/italy/2025-2026.csv",
+    "2023/24": "https://www.football-data.co.uk/mmz4281/2324/I1.csv",
+    "2024/25": "https://www.football-data.co.uk/mmz4281/2425/I1.csv",
+    "2025/26": "https://www.football-data.co.uk/mmz4281/2526/I1.csv",
 }
 
 
@@ -50,10 +48,11 @@ def verify_provenance(output_dir: Path | None = None) -> Tuple[Path, Path]:
         season_db = season_db.sort_values(["fixture_id"]).reset_index(drop=True)
         season_source = season_source.sort_values(["fixture_id"]).reset_index(drop=True)
 
-        source_file_name = source_csv.name
+        source_file_path = resolve_source_file(base_dir, season)
+        source_file_name = source_file_path.name if source_file_path.exists() else source_csv.name
         source_url = SOURCE_URLS[season]
-        source_row_count = int(len(season_source))
-        file_sha256 = sha256_file(source_csv)
+        source_row_count = int(len(pd.read_csv(source_file_path, encoding="utf-8-sig"))) if source_file_path.exists() else int(len(season_source))
+        file_sha256 = sha256_file(source_file_path) if source_file_path.exists() else sha256_file(source_csv)
         import_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
         team_names_match = bool((season_db["home_team"].reset_index(drop=True) == season_source["home_team"].reset_index(drop=True)).all() and (season_db["away_team"].reset_index(drop=True) == season_source["away_team"].reset_index(drop=True)).all())
@@ -135,6 +134,21 @@ def verify_provenance(output_dir: Path | None = None) -> Tuple[Path, Path]:
     report_path = reports_dir / "data_provenance.md"
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
     return report_path, manifest_path
+
+
+def resolve_source_file(base_dir: Path, season: str) -> Path:
+    repo_root = Path(__file__).resolve().parents[2]
+    season_code = season.replace("/", "")
+    candidate_names = [
+        base_dir / "data" / "raw" / "football_data" / f"I1_{season_code}.csv",
+        base_dir / "data" / "raw" / "football_data" / f"I1_{season_code[2:]}{season_code[:2]}.csv",
+        repo_root / "data" / "raw" / "football_data" / f"I1_{season_code}.csv",
+        repo_root / "data" / "raw" / "football_data" / f"I1_{season_code[2:]}{season_code[:2]}.csv",
+    ]
+    for candidate in candidate_names:
+        if candidate.exists():
+            return candidate
+    return candidate_names[0]
 
 
 def sha256_file(path: Path) -> str:

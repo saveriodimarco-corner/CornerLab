@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -12,37 +12,16 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.data.normalizer import normalize_team_name
+from src.data.provenance import verify_provenance
 from src.engine.feature_store import FeatureStore
 
 
-SEASONS = [
-    {"season": "2023/24", "start_date": "2023-08-11"},
-    {"season": "2024/25", "start_date": "2024-08-16"},
-    {"season": "2025/26", "start_date": "2025-08-15"},
-]
-
-TEAMS = [
-    "Atalanta",
-    "Bologna",
-    "Cagliari",
-    "Como",
-    "Empoli",
-    "Fiorentina",
-    "Genoa",
-    "Inter",
-    "Juventus",
-    "Lazio",
-    "Lecce",
-    "Milan",
-    "Napoli",
-    "Parma",
-    "Roma",
-    "Torino",
-    "Udinese",
-    "Venezia",
-    "Verona",
-    "Monza",
-]
+OFFICIAL_SOURCE_FILES = {
+    "2023/24": "data/raw/football_data/I1_2324.csv",
+    "2024/25": "data/raw/football_data/I1_2425.csv",
+    "2025/26": "data/raw/football_data/I1_2526.csv",
+}
 
 
 def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path, Path, Path, Path]:
@@ -55,7 +34,7 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     for directory in [raw_dir, processed_dir, research_dir, reports_dir, docs_dir]:
         directory.mkdir(parents=True, exist_ok=True)
 
-    matches_df = generate_serie_a_matches()
+    matches_df = generate_serie_a_matches(base_dir)
     csv_path = raw_dir / "serie_a_matches.csv"
     matches_df.to_csv(csv_path, index=False)
 
@@ -73,89 +52,90 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     validation_path = reports_dir / "database_validation.md"
     validation_path.write_text(validation_report, encoding="utf-8")
 
-    descriptive_report, html_paths = build_descriptive_report(matches_df, reports_dir)
+    descriptive_report, _ = build_descriptive_report(matches_df, reports_dir)
     descriptive_path = reports_dir / "descriptive_statistics.md"
     descriptive_path.write_text(descriptive_report, encoding="utf-8")
 
     dictionary_path = docs_dir / "DATA_DICTIONARY.md"
     dictionary_path.write_text(build_data_dictionary(research_df), encoding="utf-8")
 
+    verify_provenance(base_dir)
+
     return csv_path, canonical_path, db_path, research_path, validation_path
 
 
-def generate_serie_a_matches() -> pd.DataFrame:
+def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
+    base_dir = base_dir or Path.cwd()
+    repo_root = Path(__file__).resolve().parents[2]
     rows: List[Dict[str, Any]] = []
-    fixture_id = 1
-    for season_meta in SEASONS:
-        season = season_meta["season"]
-        start_date = pd.to_datetime(season_meta["start_date"])
-        first_leg = generate_round_robin_schedule(TEAMS)
-        second_leg = [[(away, home) for home, away in round_matches] for round_matches in first_leg]
+    for season in ["2023/24", "2024/25", "2025/26"]:
+        source_path = resolve_source_path(base_dir, season)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Missing official source file: {source_path}")
 
-        for round_idx, round_matches in enumerate(first_leg):
-            working_date = start_date + timedelta(days=round_idx * 7)
-            for home_team, away_team in round_matches:
-                rows.append(build_match_row(fixture_id, season, working_date, home_team, away_team))
-                fixture_id += 1
+        raw_df = pd.read_csv(source_path, encoding="utf-8-sig")
+        required_columns = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "HC", "AC"]
+        missing_columns = [column for column in required_columns if column not in raw_df.columns]
+        if missing_columns:
+            raise ValueError(f"Source file {source_path} is missing required columns: {missing_columns}")
 
-        for round_idx, round_matches in enumerate(second_leg):
-            working_date = start_date + timedelta(days=(19 + round_idx) * 7)
-            for home_team, away_team in round_matches:
-                rows.append(build_match_row(fixture_id, season, working_date, home_team, away_team))
-                fixture_id += 1
+        season_rows = []
+        for _, raw_row in raw_df.iterrows():
+            match_date = pd.to_datetime(raw_row["Date"], dayfirst=True, errors="coerce")
+            if pd.isna(match_date):
+                raise ValueError(f"Invalid date in {source_path}: {raw_row['Date']}")
+            home_team = normalize_team_name(raw_row["HomeTeam"])
+            away_team = normalize_team_name(raw_row["AwayTeam"])
+            if home_team == away_team:
+                raise ValueError(f"Self-fixture detected in {source_path}: {home_team} vs {away_team}")
+            home_goals = int(float(raw_row["FTHG"]))
+            away_goals = int(float(raw_row["FTAG"]))
+            home_corners = int(float(raw_row["HC"]))
+            away_corners = int(float(raw_row["AC"]))
+            if home_corners < 0 or away_corners < 0:
+                raise ValueError(f"Negative corner count in {source_path}")
+            season_rows.append(
+                {
+                    "date": match_date.strftime("%Y-%m-%d"),
+                    "season": season,
+                    "competition": "Serie A",
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "home_goals": home_goals,
+                    "away_goals": away_goals,
+                    "home_corners": home_corners,
+                    "away_corners": away_corners,
+                    "total_corners": home_corners + away_corners,
+                    "source": "football-data-csv",
+                    "source_file_name": source_path.name,
+                    "source_url": f"https://www.football-data.co.uk/mmz4281/{season.split('/')[0]}{season.split('/')[1]}/I1.csv",
+                    "import_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+
+        if len(season_rows) != 380:
+            raise ValueError(f"Expected 380 rows for {season}, received {len(season_rows)}")
+        rows.extend(season_rows)
 
     matches_df = pd.DataFrame(rows)
+    matches_df = matches_df.sort_values(["season", "date", "home_team", "away_team"]).reset_index(drop=True)
+    matches_df["fixture_id"] = range(1, len(matches_df) + 1)
     matches_df["row_hash"] = matches_df.apply(lambda row: compute_row_hash(row), axis=1)
     matches_df = matches_df.sort_values(["season", "date", "fixture_id"]).reset_index(drop=True)
+    matches_df["fixture_id"] = range(1, len(matches_df) + 1)
     return matches_df
 
 
-def build_match_row(fixture_id: int, season: str, working_date: pd.Timestamp, home_team: str, away_team: str) -> Dict[str, Any]:
-    home_strength = 0.7 + (TEAMS.index(home_team) % 10) * 0.08
-    away_strength = 0.7 + (TEAMS.index(away_team) % 10) * 0.08
-    noise = np.sin(fixture_id) * 1.2
-    home_corners = int(round(max(3, 5.0 + home_strength - away_strength + noise + 0.4)))
-    away_corners = int(round(max(3, 4.0 + away_strength - home_strength - noise + 0.2)))
-    home_goals = int(round(max(0, home_corners // 5 - 1 + (fixture_id % 3) - 1)))
-    away_goals = int(round(max(0, away_corners // 5 - 1 + ((fixture_id + 2) % 3) - 1)))
-    if home_goals == away_goals and home_goals == 0:
-        home_goals = 1
-    return {
-        "fixture_id": fixture_id,
-        "date": working_date.strftime("%Y-%m-%d"),
-        "season": season,
-        "competition": "Serie A",
-        "home_team": home_team,
-        "away_team": away_team,
-        "home_goals": home_goals,
-        "away_goals": away_goals,
-        "home_corners": home_corners,
-        "away_corners": away_corners,
-        "total_corners": home_corners + away_corners,
-        "source": "football-data-csv",
-        "import_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "row_hash": "",
-    }
-
-
-def generate_round_robin_schedule(teams: List[str]) -> List[List[Tuple[str, str]]]:
-    if len(teams) % 2 != 0:
-        teams = teams + ["BYE"]
-    n = len(teams)
-    half = n // 2
-    rotation = teams[1:]
-    schedule: List[List[Tuple[str, str]]] = []
-    for _ in range(n - 1):
-        pairings = []
-        for i in range(half):
-            home = rotation[i]
-            away = rotation[-i - 1]
-            if home == "BYE" or away == "BYE":
-                continue
-            pairings.append((home, away))
-        schedule.append(pairings)
-        rotation = [rotation[-1]] + [rotation[0]] + rotation[1:-1]
-    return schedule
+def resolve_source_path(base_dir: Path, season: str) -> Path:
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        base_dir / OFFICIAL_SOURCE_FILES[season],
+        repo_root / OFFICIAL_SOURCE_FILES[season],
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def create_historical_sqlite(matches_df: pd.DataFrame, db_path: Path) -> None:
