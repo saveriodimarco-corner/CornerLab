@@ -20,6 +20,8 @@ SOURCE_URLS = {
 
 def verify_provenance(output_dir: Path | None = None) -> Tuple[Path, Path]:
     base_dir = output_dir or Path.cwd()
+    repo_root = Path(__file__).resolve().parents[2]
+
     reports_dir = base_dir / "reports"
     processed_dir = base_dir / "data" / "processed"
     raw_dir = base_dir / "data" / "raw"
@@ -29,7 +31,13 @@ def verify_provenance(output_dir: Path | None = None) -> Tuple[Path, Path]:
     db_path = raw_dir / "serie_a_historical.db"
     source_csv = raw_dir / "serie_a_matches.csv"
     if not db_path.exists() or not source_csv.exists():
-        raise FileNotFoundError("Historical provenance inputs are missing")
+        fallback_db = repo_root / "data" / "raw" / "serie_a_historical.db"
+        fallback_csv = repo_root / "data" / "raw" / "serie_a_matches.csv"
+        if fallback_db.exists() and fallback_csv.exists():
+            db_path = fallback_db
+            source_csv = fallback_csv
+        else:
+            raise FileNotFoundError("Historical provenance inputs are missing")
 
     db_matches = pd.read_sql_query("SELECT fixture_id, date, season, home_team, away_team, home_corners, away_corners FROM matches", sqlite3.connect(db_path))
     source_matches = pd.read_csv(source_csv)
