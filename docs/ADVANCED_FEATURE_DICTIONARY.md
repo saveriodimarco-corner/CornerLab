@@ -1,0 +1,59 @@
+# Advanced Feature Dictionary
+
+This document lists the leakage-safe advanced features generated for each match.
+
+- **match_id**: Canonical fixture identifier copied from the historical match dataset.
+- **season**: Competition season for the match.
+- **date**: Match date in ISO format.
+- **home_team**: Home team name.
+- **away_team**: Away team name.
+- **actual_home_corners**: Observed home-team corner count for the match.
+- **actual_away_corners**: Observed away-team corner count for the match.
+- **actual_total_corners**: Observed total corners for the match.
+- **over_8_5**: Indicator that the total corner count exceeded 8.5.
+- **over_9_5**: Indicator that the total corner count exceeded 9.5.
+- **over_10_5**: Indicator that the total corner count exceeded 10.5.
+- **over_11_5**: Indicator that the total corner count exceeded 11.5.
+- **corners_for_last3**: Three-match rolling average of prior corners scored by the home team.
+- **corners_for_last5**: Five-match rolling average of prior corners scored by the home team.
+- **corners_for_last10**: Ten-match rolling average of prior corners scored by the home team.
+- **corners_against_last3**: Three-match rolling average of prior corners conceded by the home team.
+- **corners_against_last5**: Five-match rolling average of prior corners conceded by the home team.
+- **corners_against_last10**: Ten-match rolling average of prior corners conceded by the home team.
+- **total_corners_last3**: Three-match rolling average of prior total corners involving the home team.
+- **total_corners_last5**: Five-match rolling average of prior total corners involving the home team.
+- **total_corners_last10**: Ten-match rolling average of prior total corners involving the home team.
+- **corners_for_ewma**: EWMA of prior corners scored by the home team.
+- **corners_against_ewma**: EWMA of prior corners conceded by the home team.
+- **total_corners_ewma**: EWMA of prior total corners involving the home team.
+- **home_corners_for_last5**: Five-match rolling average of prior corners scored by the home team.
+- **home_corners_against_last5**: Five-match rolling average of prior corners conceded by the home team.
+- **home_total_corners_last5**: Five-match rolling average of prior total corners involving the home team.
+- **away_corners_for_last5**: Five-match rolling average of prior corners scored by the away team.
+- **away_corners_against_last5**: Five-match rolling average of prior corners conceded by the away team.
+- **away_total_corners_last5**: Five-match rolling average of prior total corners involving the away team.
+- **corners_for_std_last5**: Five-match standard deviation of prior corners scored by the home team.
+- **corners_for_std_last10**: Ten-match standard deviation of prior corners scored by the home team.
+- **corners_against_std_last5**: Five-match standard deviation of prior corners conceded by the home team.
+- **total_corners_std_last5**: Five-match standard deviation of prior total corners involving the home team.
+- **total_corners_std_last10**: Ten-match standard deviation of prior total corners involving the home team.
+- **coefficient_of_variation_last10**: Coefficient of variation based on prior total corners for the home team.
+- **attack_trend**: Difference between the home team’s recent-5 and recent-10 corners-for averages.
+- **defence_trend**: Difference between the home team’s recent-5 and recent-10 corners-against averages.
+- **tempo_trend**: Difference between the home team’s recent-5 and recent-10 total-corners averages.
+- **expected_home_corners_baseline**: Baseline expectation for the home team’s corners.
+- **expected_away_corners_baseline**: Baseline expectation for the away team’s corners.
+- **expected_total_corners_baseline**: Baseline expectation for total corners in the matchup.
+- **attack_difference**: Difference between the home and away teams’ recent corners-for averages.
+- **defence_difference**: Difference between the home and away teams’ recent corners-against averages.
+- **tempo_difference**: Difference between the home and away teams’ recent total-corners averages.
+- **combined_volatility**: Average volatility of the home and away teams.
+- **combined_trend**: Difference between the home and away teams’ trend signals.
+- **home_rest_days**: Days since the home team’s previous match.
+- **away_rest_days**: Days since the away team’s previous match.
+- **rest_days_difference**: Difference between home and away rest days.
+- **home_matches_played**: Number of matches played by the home team before the current match in the season.
+- **away_matches_played**: Number of matches played by the away team before the current match in the season.
+- **season_match_number**: Ordinal match number within the season.
+- **data_quality_score**: Score between 0 and 1 reflecting the amount of prior history available.
+- **insufficient_history**: Flag indicating that the row has limited history and should be treated as cold-start.
