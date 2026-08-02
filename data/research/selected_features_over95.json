@@ -1,0 +1,510 @@
+{
+  "target": "over_9_5",
+  "target_type": "classification",
+  "train_seasons": [
+    "2023/24",
+    "2024/25"
+  ],
+  "validation_seasons": [
+    "2025/26"
+  ],
+  "selected_features": [
+    {
+      "feature": "away_rest_days",
+      "signal_score": 38.557,
+      "train_metric": -0.003,
+      "validation_metric": -0.003,
+      "train_mi": 0.005,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 67.472
+    },
+    {
+      "feature": "home_matches_played",
+      "signal_score": 37.882,
+      "train_metric": -0.015,
+      "validation_metric": -0.036,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 120.245
+    },
+    {
+      "feature": "attack_difference",
+      "signal_score": 37.45,
+      "train_metric": 0.019,
+      "validation_metric": 0.03,
+      "train_mi": 0.045,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 3.862
+    },
+    {
+      "feature": "away_corners_for_last5",
+      "signal_score": 37.266,
+      "train_metric": -0.043,
+      "validation_metric": -0.068,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.31
+    },
+    {
+      "feature": "home_rest_days",
+      "signal_score": 36.519,
+      "train_metric": -0.024,
+      "validation_metric": -0.013,
+      "train_mi": 0.015,
+      "validation_mi": 0.004,
+      "missing_rate": 0.0,
+      "variance": 79.67
+    },
+    {
+      "feature": "corners_for_last5",
+      "signal_score": 35.87,
+      "train_metric": -0.019,
+      "validation_metric": -0.031,
+      "train_mi": 0.016,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.156
+    },
+    {
+      "feature": "attack_trend",
+      "signal_score": 35.407,
+      "train_metric": -0.038,
+      "validation_metric": -0.075,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 0.626
+    },
+    {
+      "feature": "corners_for_std_last10",
+      "signal_score": 35.214,
+      "train_metric": -0.011,
+      "validation_metric": -0.021,
+      "train_mi": 0.0,
+      "validation_mi": 0.054,
+      "missing_rate": 0.0,
+      "variance": 0.718
+    },
+    {
+      "feature": "tempo_difference",
+      "signal_score": 35.116,
+      "train_metric": -0.014,
+      "validation_metric": -0.002,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 6.127
+    },
+    {
+      "feature": "rest_days_difference",
+      "signal_score": 34.902,
+      "train_metric": -0.035,
+      "validation_metric": -0.015,
+      "train_mi": 0.0,
+      "validation_mi": 0.024,
+      "missing_rate": 0.0,
+      "variance": 29.488
+    },
+    {
+      "feature": "defence_difference",
+      "signal_score": 34.581,
+      "train_metric": -0.035,
+      "validation_metric": -0.03,
+      "train_mi": 0.017,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 4.464
+    },
+    {
+      "feature": "combined_trend",
+      "signal_score": 34.466,
+      "train_metric": -0.025,
+      "validation_metric": -0.049,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 1.299
+    },
+    {
+      "feature": "combined_volatility",
+      "signal_score": 34.415,
+      "train_metric": -0.032,
+      "validation_metric": -0.076,
+      "train_mi": 0.0,
+      "validation_mi": 0.019,
+      "missing_rate": 0.0,
+      "variance": 0.584
+    },
+    {
+      "feature": "corners_for_last10",
+      "signal_score": 34.179,
+      "train_metric": 0.002,
+      "validation_metric": 0.018,
+      "train_mi": 0.0,
+      "validation_mi": 0.022,
+      "missing_rate": 0.0,
+      "variance": 1.586
+    },
+    {
+      "feature": "corners_against_std_last5",
+      "signal_score": 33.35,
+      "train_metric": -0.013,
+      "validation_metric": -0.003,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 0.905
+    },
+    {
+      "feature": "corners_for_last3",
+      "signal_score": 32.753,
+      "train_metric": -0.055,
+      "validation_metric": -0.031,
+      "train_mi": 0.034,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.952
+    },
+    {
+      "feature": "total_corners_last3",
+      "signal_score": 32.69,
+      "train_metric": -0.013,
+      "validation_metric": -0.062,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 5.618
+    },
+    {
+      "feature": "defence_trend",
+      "signal_score": 32.304,
+      "train_metric": 0.065,
+      "validation_metric": 0.037,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 0.662
+    },
+    {
+      "feature": "corners_for_ewma",
+      "signal_score": 31.919,
+      "train_metric": -0.031,
+      "validation_metric": -0.012,
+      "train_mi": 0.014,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.075
+    },
+    {
+      "feature": "corners_for_std_last5",
+      "signal_score": 31.172,
+      "train_metric": -0.003,
+      "validation_metric": -0.039,
+      "train_mi": 0.001,
+      "validation_mi": 0.037,
+      "missing_rate": 0.0,
+      "variance": 0.976
+    },
+    {
+      "feature": "away_corners_against_last5",
+      "signal_score": 31.13,
+      "train_metric": 0.1,
+      "validation_metric": 0.029,
+      "train_mi": 0.005,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.594
+    },
+    {
+      "feature": "total_corners_std_last5",
+      "signal_score": 28.922,
+      "train_metric": 0.0,
+      "validation_metric": 0.092,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 1.45
+    },
+    {
+      "feature": "expected_total_corners_baseline",
+      "signal_score": 28.271,
+      "train_metric": 0.047,
+      "validation_metric": -0.058,
+      "train_mi": 0.003,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.732
+    },
+    {
+      "feature": "corners_against_last3",
+      "signal_score": 28.137,
+      "train_metric": 0.033,
+      "validation_metric": -0.038,
+      "train_mi": 0.016,
+      "validation_mi": 0.01,
+      "missing_rate": 0.0,
+      "variance": 3.565
+    },
+    {
+      "feature": "total_corners_last10",
+      "signal_score": 27.119,
+      "train_metric": 0.021,
+      "validation_metric": -0.031,
+      "train_mi": 0.007,
+      "validation_mi": 0.023,
+      "missing_rate": 0.0,
+      "variance": 3.126
+    },
+    {
+      "feature": "total_corners_last5",
+      "signal_score": 26.991,
+      "train_metric": 0.029,
+      "validation_metric": -0.042,
+      "train_mi": 0.0,
+      "validation_mi": 0.009,
+      "missing_rate": 0.0,
+      "variance": 4.133
+    },
+    {
+      "feature": "corners_against_ewma",
+      "signal_score": 26.617,
+      "train_metric": 0.034,
+      "validation_metric": -0.036,
+      "train_mi": 0.0,
+      "validation_mi": 0.025,
+      "missing_rate": 0.0,
+      "variance": 2.547
+    },
+    {
+      "feature": "expected_home_corners_baseline",
+      "signal_score": 26.331,
+      "train_metric": 0.057,
+      "validation_metric": 0.001,
+      "train_mi": 0.004,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 1.349
+    },
+    {
+      "feature": "corners_against_last10",
+      "signal_score": 25.7,
+      "train_metric": 0.025,
+      "validation_metric": -0.043,
+      "train_mi": 0.004,
+      "validation_mi": 0.027,
+      "missing_rate": 0.0,
+      "variance": 1.99
+    },
+    {
+      "feature": "away_total_corners_last5",
+      "signal_score": 25.289,
+      "train_metric": 0.045,
+      "validation_metric": -0.035,
+      "train_mi": 0.002,
+      "validation_mi": 0.003,
+      "missing_rate": 0.0,
+      "variance": 4.394
+    },
+    {
+      "feature": "tempo_trend",
+      "signal_score": 25.162,
+      "train_metric": 0.022,
+      "validation_metric": -0.027,
+      "train_mi": 0.0,
+      "validation_mi": 0.004,
+      "missing_rate": 0.0,
+      "variance": 1.031
+    },
+    {
+      "feature": "total_corners_std_last10",
+      "signal_score": 23.936,
+      "train_metric": 0.002,
+      "validation_metric": -0.008,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 1.037
+    },
+    {
+      "feature": "total_corners_ewma",
+      "signal_score": 21.952,
+      "train_metric": 0.004,
+      "validation_metric": -0.045,
+      "train_mi": 0.0,
+      "validation_mi": 0.01,
+      "missing_rate": 0.0,
+      "variance": 4.793
+    },
+    {
+      "feature": "expected_away_corners_baseline",
+      "signal_score": 20.702,
+      "train_metric": 0.009,
+      "validation_metric": -0.06,
+      "train_mi": 0.0,
+      "validation_mi": 0.018,
+      "missing_rate": 0.0,
+      "variance": 1.332
+    },
+    {
+      "feature": "insufficient_history",
+      "signal_score": 20.491,
+      "train_metric": 0.01,
+      "validation_metric": -0.001,
+      "train_mi": 0.001,
+      "validation_mi": 0.001,
+      "missing_rate": 0.0,
+      "variance": 0.068
+    },
+    {
+      "feature": "corners_against_last5",
+      "signal_score": 20.381,
+      "train_metric": 0.054,
+      "validation_metric": -0.014,
+      "train_mi": 0.006,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.62
+    },
+    {
+      "feature": "coefficient_of_variation_last10",
+      "signal_score": 17.924,
+      "train_metric": -0.023,
+      "validation_metric": 0.005,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 0.012
+    },
+    {
+      "feature": "data_quality_score",
+      "signal_score": 17.606,
+      "train_metric": -0.023,
+      "validation_metric": 0.002,
+      "train_mi": 0.0,
+      "validation_mi": 0.005,
+      "missing_rate": 0.0,
+      "variance": 0.05
+    }
+  ],
+  "excluded_features": [
+    {
+      "feature": "season_match_number",
+      "signal_score": 37.749,
+      "train_metric": -0.014,
+      "validation_metric": -0.038,
+      "train_mi": 0.014,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 12033.25,
+      "exclusion_reason": "highly correlated with a selected feature"
+    },
+    {
+      "feature": "season_match_number",
+      "signal_score": 37.749,
+      "train_metric": -0.014,
+      "validation_metric": -0.038,
+      "train_mi": 0.014,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 12033.25,
+      "exclusion_reason": "low signal or redundant with another selected feature"
+    },
+    {
+      "feature": "away_matches_played",
+      "signal_score": 36.288,
+      "train_metric": -0.013,
+      "validation_metric": -0.037,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 120.255,
+      "exclusion_reason": "highly correlated with a selected feature"
+    },
+    {
+      "feature": "away_matches_played",
+      "signal_score": 36.288,
+      "train_metric": -0.013,
+      "validation_metric": -0.037,
+      "train_mi": 0.0,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 120.255,
+      "exclusion_reason": "low signal or redundant with another selected feature"
+    },
+    {
+      "feature": "home_corners_for_last5",
+      "signal_score": 35.87,
+      "train_metric": -0.019,
+      "validation_metric": -0.031,
+      "train_mi": 0.016,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.156,
+      "exclusion_reason": "highly correlated with a selected feature"
+    },
+    {
+      "feature": "home_corners_for_last5",
+      "signal_score": 35.87,
+      "train_metric": -0.019,
+      "validation_metric": -0.031,
+      "train_mi": 0.016,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.156,
+      "exclusion_reason": "low signal or redundant with another selected feature"
+    },
+    {
+      "feature": "home_total_corners_last5",
+      "signal_score": 26.991,
+      "train_metric": 0.029,
+      "validation_metric": -0.042,
+      "train_mi": 0.0,
+      "validation_mi": 0.009,
+      "missing_rate": 0.0,
+      "variance": 4.133,
+      "exclusion_reason": "highly correlated with a selected feature"
+    },
+    {
+      "feature": "home_total_corners_last5",
+      "signal_score": 26.991,
+      "train_metric": 0.029,
+      "validation_metric": -0.042,
+      "train_mi": 0.0,
+      "validation_mi": 0.009,
+      "missing_rate": 0.0,
+      "variance": 4.133,
+      "exclusion_reason": "low signal or redundant with another selected feature"
+    },
+    {
+      "feature": "home_corners_against_last5",
+      "signal_score": 20.381,
+      "train_metric": 0.054,
+      "validation_metric": -0.014,
+      "train_mi": 0.006,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.62,
+      "exclusion_reason": "highly correlated with a selected feature"
+    },
+    {
+      "feature": "home_corners_against_last5",
+      "signal_score": 20.381,
+      "train_metric": 0.054,
+      "validation_metric": -0.014,
+      "train_mi": 0.006,
+      "validation_mi": 0.0,
+      "missing_rate": 0.0,
+      "variance": 2.62,
+      "exclusion_reason": "low signal or redundant with another selected feature"
+    }
+  ],
+  "exclusion_reason": "Features were removed for zero variance, near-zero variance, or high collinearity with stronger signal features.",
+  "selected_feature_count": 38,
+  "train_metric": 0.0032368421052631578,
+  "validation_metric": -0.020789473684210528,
+  "signal_score": 29.965078947368426
+}
