@@ -1,4 +1,4 @@
 season,source_file_name,source_url,source_row_count,file_sha256,import_timestamp,db_row_count,team_names_match,dates_match,corners_match,synthetic_fixture_count,test_fixture_count
-2023/24,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2324/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:19:24,380,True,True,True,0,0
-2024/25,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2425/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:19:24,380,True,True,True,0,0
-2025/26,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2526/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:19:24,380,True,True,True,0,0
+2023/24,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2324/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:39:05,380,True,True,True,0,0
+2024/25,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2425/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:39:05,380,True,True,True,0,0
+2025/26,serie_a_matches.csv,https://www.football-data.co.uk/mmz4281/2526/I1.csv,380,5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064,2026-08-02 17:39:05,380,True,True,True,0,0

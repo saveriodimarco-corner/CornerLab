@@ -1,30 +1,30 @@
 # Descriptive Statistics Report
 
 ## Summary
-                   mean  median       std  variance
-home_corners   5.409649     5.0  0.954493  0.911057
-away_corners   4.192105     4.0  0.923277  0.852440
-total_corners  9.601754    10.0  0.489751  0.239856
+                   mean  median       std   variance
+home_corners   5.211404     5.0  2.954744   8.730511
+away_corners   4.042982     4.0  2.480635   6.153550
+total_corners  9.254386     9.0  3.400437  11.562975
 
 ## Distribution
 total_corners
-(0, 2]         0
-(2, 4]         0
-(4, 6]         0
-(6, 8]         0
-(8, 10]     1140
-(10, 12]       0
-(12, 14]       0
-(14, 16]       0
-(16, 18]       0
-(18, 20]       0
+(0, 2]        7
+(2, 4]       74
+(4, 6]      164
+(6, 8]      256
+(8, 10]     248
+(10, 12]    206
+(12, 14]    108
+(14, 16]     47
+(16, 18]     18
+(18, 20]      8
 
 ## Season comparison
          mean_total_corners  mean_home_corners  mean_away_corners
 season                                                           
-2023/24            9.605263           5.405263           4.200000
-2024/25            9.597368           5.400000           4.197368
-2025/26            9.602632           5.423684           4.178947
+2023/24            9.631579           5.502632           4.128947
+2024/25            9.310526           5.168421           4.142105
+2025/26            8.821053           4.963158           3.857895
 
 ## Plots
 - Histogram: [total_corners_histogram.html](total_corners_histogram.html)

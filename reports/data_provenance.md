@@ -7,7 +7,7 @@ This report verifies the source provenance of the historical Serie A dataset aga
 - Source URL: https://www.football-data.co.uk/mmz4281/2324/I1.csv
 - Source row count: 380
 - File SHA256: 5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064
-- Import timestamp: 2026-08-02 17:19:24
+- Import timestamp: 2026-08-02 17:39:05
 - Database row count: 380
 - Team names match: True
 - Dates match: True
@@ -20,7 +20,7 @@ This report verifies the source provenance of the historical Serie A dataset aga
 - Source URL: https://www.football-data.co.uk/mmz4281/2425/I1.csv
 - Source row count: 380
 - File SHA256: 5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064
-- Import timestamp: 2026-08-02 17:19:24
+- Import timestamp: 2026-08-02 17:39:05
 - Database row count: 380
 - Team names match: True
 - Dates match: True
@@ -33,7 +33,7 @@ This report verifies the source provenance of the historical Serie A dataset aga
 - Source URL: https://www.football-data.co.uk/mmz4281/2526/I1.csv
 - Source row count: 380
 - File SHA256: 5088d8338178cfba8d48644246927be455d58b0e4cfc2a659d98d68e7b4e8064
-- Import timestamp: 2026-08-02 17:19:24
+- Import timestamp: 2026-08-02 17:39:05
 - Database row count: 380
 - Team names match: True
 - Dates match: True
