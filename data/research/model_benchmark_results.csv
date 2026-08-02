@@ -1,0 +1,220 @@
+target_name,model_name,metric_name,value
+actual_total_corners,league_mean_baseline,mae,2.607520775623269
+actual_total_corners,league_mean_baseline,rmse,3.21197659219504
+actual_total_corners,league_mean_baseline,mean_prediction_bias,-0.6500000000000001
+actual_total_corners,league_mean_baseline,residual_standard_deviation,3.1455196118938544
+actual_total_corners,league_mean_baseline,percentage_within_1_corner,0.22105263157894736
+actual_total_corners,league_mean_baseline,percentage_within_2_corners,0.45526315789473687
+actual_total_corners,league_mean_baseline,r2,-0.042701380800931776
+actual_total_corners,league_mean_baseline,model_object,9.471052631578948
+actual_total_corners,recent_form_baseline,mae,2.6805043859649125
+actual_total_corners,recent_form_baseline,rmse,3.3429574059261147
+actual_total_corners,recent_form_baseline,mean_prediction_bias,-0.054714912280701695
+actual_total_corners,recent_form_baseline,residual_standard_deviation,3.3425096104888574
+actual_total_corners,recent_form_baseline,percentage_within_1_corner,0.23157894736842105
+actual_total_corners,recent_form_baseline,percentage_within_2_corners,0.4394736842105263
+actual_total_corners,recent_form_baseline,r2,-0.1294756995383024
+actual_total_corners,recent_form_baseline,model_object,"{'kind': 'feature', 'feature_name': 'expected_total_corners_baseline', 'values': 0      0.0
+1      0.0
+2      0.0
+3      0.0
+4      0.0
+      ... 
+755    7.6
+756    9.2
+757    9.6
+758    9.5
+759    9.6
+Name: expected_total_corners_baseline, Length: 760, dtype: float64}"
+actual_total_corners,poisson_regression,mae,2.5742529315369946
+actual_total_corners,poisson_regression,rmse,3.204717653996273
+actual_total_corners,poisson_regression,mean_prediction_bias,-0.4751505275705302
+actual_total_corners,poisson_regression,residual_standard_deviation,3.169297590631846
+actual_total_corners,poisson_regression,percentage_within_1_corner,0.23157894736842105
+actual_total_corners,poisson_regression,percentage_within_2_corners,0.45789473684210524
+actual_total_corners,poisson_regression,r2,-0.03799377976129148
+actual_total_corners,poisson_regression,model_object,"PoissonRegressor(alpha=0.0, max_iter=2000)"
+actual_total_corners,negative_binomial_regression,mae,2.672860423565303
+actual_total_corners,negative_binomial_regression,rmse,3.305710769220496
+actual_total_corners,negative_binomial_regression,mean_prediction_bias,-0.9321970761293079
+actual_total_corners,negative_binomial_regression,residual_standard_deviation,3.171550456952614
+actual_total_corners,negative_binomial_regression,percentage_within_1_corner,0.23157894736842105
+actual_total_corners,negative_binomial_regression,percentage_within_2_corners,0.4394736842105263
+actual_total_corners,negative_binomial_regression,r2,-0.10444707825554111
+actual_total_corners,negative_binomial_regression,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x12730ddf0>
+actual_total_corners,ridge_regression,mae,2.5796288397202005
+actual_total_corners,ridge_regression,rmse,3.2103434318436648
+actual_total_corners,ridge_regression,mean_prediction_bias,-0.49086192680472246
+actual_total_corners,ridge_regression,residual_standard_deviation,3.172595076462692
+actual_total_corners,ridge_regression,percentage_within_1_corner,0.24473684210526317
+actual_total_corners,ridge_regression,percentage_within_2_corners,0.45526315789473687
+actual_total_corners,ridge_regression,r2,-0.0416413073059867
+actual_total_corners,ridge_regression,model_object,Ridge()
+actual_total_corners,hist_gradient_boosting_regression,mae,2.8080535607197463
+actual_total_corners,hist_gradient_boosting_regression,rmse,3.5055501451482947
+actual_total_corners,hist_gradient_boosting_regression,mean_prediction_bias,-0.5261793903440807
+actual_total_corners,hist_gradient_boosting_regression,residual_standard_deviation,3.4658356956622107
+actual_total_corners,hist_gradient_boosting_regression,percentage_within_1_corner,0.22631578947368422
+actual_total_corners,hist_gradient_boosting_regression,percentage_within_2_corners,0.4052631578947368
+actual_total_corners,hist_gradient_boosting_regression,r2,-0.2420170940114541
+actual_total_corners,hist_gradient_boosting_regression,model_object,"HistGradientBoostingRegressor(max_depth=3, max_iter=200, random_state=42)"
+over_8_5,historical_base_rate_baseline,brier_score,0.2548753462603878
+over_8_5,historical_base_rate_baseline,log_loss,0.7030602775228438
+over_8_5,historical_base_rate_baseline,roc_auc,0.5
+over_8_5,historical_base_rate_baseline,accuracy,0.5131578947368421
+over_8_5,historical_base_rate_baseline,precision,0.5131578947368421
+over_8_5,historical_base_rate_baseline,recall,1.0
+over_8_5,historical_base_rate_baseline,f1,0.6782608695652174
+over_8_5,historical_base_rate_baseline,model_object,0.5842105263157895
+over_8_5,logistic_regression,brier_score,0.2528385820281149
+over_8_5,logistic_regression,log_loss,0.6993865151742441
+over_8_5,logistic_regression,roc_auc,0.5436174636174635
+over_8_5,logistic_regression,accuracy,0.5289473684210526
+over_8_5,logistic_regression,precision,0.5240963855421686
+over_8_5,logistic_regression,recall,0.8923076923076924
+over_8_5,logistic_regression,f1,0.6603415559772297
+over_8_5,logistic_regression,model_object,"LogisticRegression(max_iter=5000, random_state=42)"
+over_8_5,hist_gradient_boosting_classifier,brier_score,0.3008757032052658
+over_8_5,hist_gradient_boosting_classifier,log_loss,0.8253418780900975
+over_8_5,hist_gradient_boosting_classifier,roc_auc,0.46586278586278584
+over_8_5,hist_gradient_boosting_classifier,accuracy,0.48157894736842105
+over_8_5,hist_gradient_boosting_classifier,precision,0.49606299212598426
+over_8_5,hist_gradient_boosting_classifier,recall,0.6461538461538462
+over_8_5,hist_gradient_boosting_classifier,f1,0.5612472160356348
+over_8_5,hist_gradient_boosting_classifier,model_object,"HistGradientBoostingClassifier(max_depth=3, max_iter=200, random_state=42)"
+over_8_5,poisson_probability,brier_score,0.2719705464819198
+over_8_5,poisson_probability,log_loss,0.7389432912631777
+over_8_5,poisson_probability,roc_auc,0.5366597366597367
+over_8_5,poisson_probability,accuracy,0.4868421052631579
+over_8_5,poisson_probability,precision,0.0
+over_8_5,poisson_probability,recall,0.0
+over_8_5,poisson_probability,f1,0.0
+over_8_5,poisson_probability,model_object,"PoissonRegressor(alpha=0.0, max_iter=2000)"
+over_8_5,negative_binomial_probability,brier_score,0.25808162010964514
+over_8_5,negative_binomial_probability,log_loss,0.7095375337300291
+over_8_5,negative_binomial_probability,roc_auc,0.5366597366597367
+over_8_5,negative_binomial_probability,accuracy,0.4868421052631579
+over_8_5,negative_binomial_probability,precision,0.0
+over_8_5,negative_binomial_probability,recall,0.0
+over_8_5,negative_binomial_probability,f1,0.0
+over_8_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127643820>
+over_9_5,historical_base_rate_baseline,brier_score,0.24675207756232687
+over_9_5,historical_base_rate_baseline,log_loss,0.6866485479618505
+over_9_5,historical_base_rate_baseline,roc_auc,0.5
+over_9_5,historical_base_rate_baseline,accuracy,0.5973684210526315
+over_9_5,historical_base_rate_baseline,precision,0.0
+over_9_5,historical_base_rate_baseline,recall,0.0
+over_9_5,historical_base_rate_baseline,f1,0.0
+over_9_5,historical_base_rate_baseline,model_object,0.48157894736842105
+over_9_5,logistic_regression,brier_score,0.24639186316667944
+over_9_5,logistic_regression,log_loss,0.6861068037890391
+over_9_5,logistic_regression,roc_auc,0.5417638421007169
+over_9_5,logistic_regression,accuracy,0.5578947368421052
+over_9_5,logistic_regression,precision,0.4418604651162791
+over_9_5,logistic_regression,recall,0.37254901960784315
+over_9_5,logistic_regression,f1,0.40425531914893614
+over_9_5,logistic_regression,model_object,"LogisticRegression(max_iter=5000, random_state=42)"
+over_9_5,hist_gradient_boosting_classifier,brier_score,0.2959054774577391
+over_9_5,hist_gradient_boosting_classifier,log_loss,0.8101383772944276
+over_9_5,hist_gradient_boosting_classifier,roc_auc,0.47522386340733064
+over_9_5,hist_gradient_boosting_classifier,accuracy,0.5026315789473684
+over_9_5,hist_gradient_boosting_classifier,precision,0.398876404494382
+over_9_5,hist_gradient_boosting_classifier,recall,0.46405228758169936
+over_9_5,hist_gradient_boosting_classifier,f1,0.42900302114803623
+over_9_5,hist_gradient_boosting_classifier,model_object,"HistGradientBoostingClassifier(max_depth=3, max_iter=200, random_state=42)"
+over_9_5,poisson_probability,brier_score,0.24786168713486928
+over_9_5,poisson_probability,log_loss,0.6908544980421231
+over_9_5,poisson_probability,roc_auc,0.5345368690794966
+over_9_5,poisson_probability,accuracy,0.5973684210526315
+over_9_5,poisson_probability,precision,0.0
+over_9_5,poisson_probability,recall,0.0
+over_9_5,poisson_probability,f1,0.0
+over_9_5,poisson_probability,model_object,"PoissonRegressor(alpha=0.0, max_iter=2000)"
+over_9_5,negative_binomial_probability,brier_score,0.2402191159381915
+over_9_5,negative_binomial_probability,log_loss,0.6734286754912564
+over_9_5,negative_binomial_probability,roc_auc,0.5345368690794966
+over_9_5,negative_binomial_probability,accuracy,0.5973684210526315
+over_9_5,negative_binomial_probability,precision,0.0
+over_9_5,negative_binomial_probability,recall,0.0
+over_9_5,negative_binomial_probability,f1,0.0
+over_9_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x1276a0940>
+over_10_5,historical_base_rate_baseline,brier_score,0.2126038781163435
+over_10_5,historical_base_rate_baseline,log_loss,0.6169760440661461
+over_10_5,historical_base_rate_baseline,roc_auc,0.5
+over_10_5,historical_base_rate_baseline,accuracy,0.7078947368421052
+over_10_5,historical_base_rate_baseline,precision,0.0
+over_10_5,historical_base_rate_baseline,recall,0.0
+over_10_5,historical_base_rate_baseline,f1,0.0
+over_10_5,historical_base_rate_baseline,model_object,0.3684210526315789
+over_10_5,logistic_regression,brier_score,0.21609033625525068
+over_10_5,logistic_regression,log_loss,0.6258529919641814
+over_10_5,logistic_regression,roc_auc,0.5194413744599617
+over_10_5,logistic_regression,accuracy,0.6842105263157895
+over_10_5,logistic_regression,precision,0.15384615384615385
+over_10_5,logistic_regression,recall,0.018018018018018018
+over_10_5,logistic_regression,f1,0.03225806451612903
+over_10_5,logistic_regression,model_object,"LogisticRegression(max_iter=5000, random_state=42)"
+over_10_5,hist_gradient_boosting_classifier,brier_score,0.2626369915054441
+over_10_5,hist_gradient_boosting_classifier,log_loss,0.747044304897536
+over_10_5,hist_gradient_boosting_classifier,roc_auc,0.46726280183529256
+over_10_5,hist_gradient_boosting_classifier,accuracy,0.5657894736842105
+over_10_5,hist_gradient_boosting_classifier,precision,0.2403846153846154
+over_10_5,hist_gradient_boosting_classifier,recall,0.22522522522522523
+over_10_5,hist_gradient_boosting_classifier,f1,0.23255813953488372
+over_10_5,hist_gradient_boosting_classifier,model_object,"HistGradientBoostingClassifier(max_depth=3, max_iter=200, random_state=42)"
+over_10_5,poisson_probability,brier_score,0.20958958259487398
+over_10_5,poisson_probability,log_loss,0.6121980608836445
+over_10_5,poisson_probability,roc_auc,0.5206135503533273
+over_10_5,poisson_probability,accuracy,0.7078947368421052
+over_10_5,poisson_probability,precision,0.0
+over_10_5,poisson_probability,recall,0.0
+over_10_5,poisson_probability,f1,0.0
+over_10_5,poisson_probability,model_object,"PoissonRegressor(alpha=0.0, max_iter=2000)"
+over_10_5,negative_binomial_probability,brier_score,0.2095028179869421
+over_10_5,negative_binomial_probability,log_loss,0.6101451169076713
+over_10_5,negative_binomial_probability,roc_auc,0.5206135503533273
+over_10_5,negative_binomial_probability,accuracy,0.7078947368421052
+over_10_5,negative_binomial_probability,precision,0.0
+over_10_5,negative_binomial_probability,recall,0.0
+over_10_5,negative_binomial_probability,f1,0.0
+over_10_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127728610>
+over_11_5,historical_base_rate_baseline,brier_score,0.16016620498614959
+over_11_5,historical_base_rate_baseline,log_loss,0.502413665757408
+over_11_5,historical_base_rate_baseline,roc_auc,0.5
+over_11_5,historical_base_rate_baseline,accuracy,0.8052631578947368
+over_11_5,historical_base_rate_baseline,precision,0.0
+over_11_5,historical_base_rate_baseline,recall,0.0
+over_11_5,historical_base_rate_baseline,f1,0.0
+over_11_5,historical_base_rate_baseline,model_object,0.25263157894736843
+over_11_5,logistic_regression,brier_score,0.16288069720886758
+over_11_5,logistic_regression,log_loss,0.5133048112170848
+over_11_5,logistic_regression,roc_auc,0.480259671436142
+over_11_5,logistic_regression,accuracy,0.8052631578947368
+over_11_5,logistic_regression,precision,0.0
+over_11_5,logistic_regression,recall,0.0
+over_11_5,logistic_regression,f1,0.0
+over_11_5,logistic_regression,model_object,"LogisticRegression(max_iter=5000, random_state=42)"
+over_11_5,hist_gradient_boosting_classifier,brier_score,0.194858610502872
+over_11_5,hist_gradient_boosting_classifier,log_loss,0.6270868325982846
+over_11_5,hist_gradient_boosting_classifier,roc_auc,0.4417064122946476
+over_11_5,hist_gradient_boosting_classifier,accuracy,0.7657894736842106
+over_11_5,hist_gradient_boosting_classifier,precision,0.17391304347826086
+over_11_5,hist_gradient_boosting_classifier,recall,0.05405405405405406
+over_11_5,hist_gradient_boosting_classifier,f1,0.08247422680412371
+over_11_5,hist_gradient_boosting_classifier,model_object,"HistGradientBoostingClassifier(max_depth=3, max_iter=200, random_state=42)"
+over_11_5,poisson_probability,brier_score,0.15922066502852122
+over_11_5,poisson_probability,log_loss,0.502493928337009
+over_11_5,poisson_probability,roc_auc,0.47213389860448685
+over_11_5,poisson_probability,accuracy,0.8052631578947368
+over_11_5,poisson_probability,precision,0.0
+over_11_5,poisson_probability,recall,0.0
+over_11_5,poisson_probability,f1,0.0
+over_11_5,poisson_probability,model_object,"PoissonRegressor(alpha=0.0, max_iter=2000)"
+over_11_5,negative_binomial_probability,brier_score,0.16477621001323683
+over_11_5,negative_binomial_probability,log_loss,0.5138493813510767
+over_11_5,negative_binomial_probability,roc_auc,0.47213389860448685
+over_11_5,negative_binomial_probability,accuracy,0.8052631578947368
+over_11_5,negative_binomial_probability,precision,0.0
+over_11_5,negative_binomial_probability,recall,0.0
+over_11_5,negative_binomial_probability,f1,0.0
+over_11_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127776c70>
