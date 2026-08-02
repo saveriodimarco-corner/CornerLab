@@ -5,6 +5,11 @@ from typing import Dict, List, Union
 
 import pandas as pd
 
+from src.config import CONFIG
+from src.utils.cache import CacheManager
+from src.utils.data_loader import DataLoader
+from src.utils.validator import DataValidator
+
 
 class TeamRatingEngine:
     """Calculate weighted corner-based team rating metrics from match data."""
@@ -25,22 +30,15 @@ class TeamRatingEngine:
         if max_iterations <= 0:
             raise ValueError("max_iterations must be positive")
 
-        self.alpha = alpha
-        self.max_iterations = max_iterations
+        self.alpha = alpha if alpha != 0.30 else CONFIG.EWMA_ALPHA
+        self.max_iterations = max_iterations if max_iterations != 20 else CONFIG.MAX_OSA_ITERATIONS
         self.convergence_threshold = convergence_threshold
+        self.loader = DataLoader(DataValidator())
+        self.cache = CacheManager()
 
     def load_matches(self, source: Union[str, Path]) -> pd.DataFrame:
         """Load football match data from a CSV or Parquet file."""
-        path = Path(source)
-        if path.suffix.lower() == ".csv":
-            data = pd.read_csv(path)
-        elif path.suffix.lower() in {".parquet", ".pq"}:
-            data = pd.read_parquet(path)
-        else:
-            raise ValueError("Unsupported file format. Use CSV or Parquet.")
-
-        self._validate_columns(data)
-        return data
+        return self.loader.load(source)
 
     def calculate_ratings(
         self,
@@ -203,11 +201,15 @@ class TeamRatingEngine:
 
     def build(self, source: Union[str, Path], output_path: Union[str, Path]) -> pd.DataFrame:
         """Load match data, calculate ratings, and write a parquet file."""
+        cached = self.cache.get(source, output_path)
+        if cached is not None:
+            return cached
+
         matches = self.load_matches(source)
         ratings = self.calculate_ratings(matches)
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
+        output = self.loader.ensure_output_dir(output_path)
         ratings.to_parquet(output, index=False)
+        self.cache.set(ratings, output)
         return ratings
 
     def _validate_columns(self, data: pd.DataFrame) -> None:

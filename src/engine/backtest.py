@@ -5,13 +5,15 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
+from src.config import CONFIG
+
 
 class Backtest:
     """Evaluate deterministic match predictions using common probabilistic scoring metrics."""
 
     def __init__(self) -> None:
         """Initialize the backtest evaluator."""
-        self._thresholds = [8.5, 9.5, 10.5, 11.5]
+        self._thresholds = list(CONFIG.DEFAULT_THRESHOLDS)
 
     def evaluate(self, predictions: pd.DataFrame) -> pd.DataFrame:
         """Return one row per prediction with the result and scoring metrics."""

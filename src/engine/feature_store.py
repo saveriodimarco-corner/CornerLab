@@ -5,7 +5,11 @@ from typing import Any, Dict, List, Union
 
 import pandas as pd
 
+from src.config import CONFIG
 from src.engine.team_rating import TeamRatingEngine
+from src.utils.cache import CacheManager
+from src.utils.data_loader import DataLoader
+from src.utils.validator import DataValidator
 
 
 class FeatureStore:
@@ -23,18 +27,12 @@ class FeatureStore:
     def __init__(self) -> None:
         """Initialize the feature store with the rating engine dependency."""
         self.rating_engine = TeamRatingEngine()
+        self.loader = DataLoader(DataValidator())
+        self.cache = CacheManager()
 
     def load_matches(self, source: Union[str, Path]) -> pd.DataFrame:
         """Load match data from a CSV or Parquet file when a file path is supplied."""
-        path = Path(source)
-        if path.suffix.lower() == ".csv":
-            data = pd.read_csv(path)
-        elif path.suffix.lower() in {".parquet", ".pq"}:
-            data = pd.read_parquet(path)
-        else:
-            raise ValueError("Unsupported file format. Use CSV or Parquet.")
-
-        return self._validate_matches(data)
+        return self.loader.load(source)
 
     def transform(self, matches: pd.DataFrame) -> pd.DataFrame:
         """Create one feature row per match from a match dataframe."""
@@ -64,10 +62,14 @@ class FeatureStore:
         else:
             matches = self.load_matches(source)
 
+        cached = self.cache.get(source, output_path) if not isinstance(source, pd.DataFrame) else None
+        if cached is not None:
+            return cached
+
         features = self.transform(matches)
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
+        output = self.loader.ensure_output_dir(output_path)
         features.to_parquet(output, index=False)
+        self.cache.set(features, output)
         return features
 
     def _create_feature_row(self, match: pd.Series, prior_matches: pd.DataFrame) -> Dict[str, Any]:
@@ -80,14 +82,14 @@ class FeatureStore:
         prior_ratings = self.rating_engine.calculate_ratings(prior_matches) if not prior_matches.empty else pd.DataFrame(columns=["team", "home_attack_rating", "away_attack_rating", "home_defence_rating", "away_defence_rating", "overall_attack", "overall_defence", "tempo_index", "home_corner_advantage", "away_corner_penalty", "opponent_strength_adjustment", "sample_size", "rating_std", "confidence", "standard_deviation", "consistency_index"])
         prior_ratings = prior_ratings.set_index("team") if not prior_ratings.empty else pd.DataFrame(columns=[])
 
-        home_strength = self._get_rating(prior_ratings, home_team, "home_attack_rating", default=50.0)
-        away_strength = self._get_rating(prior_ratings, away_team, "away_attack_rating", default=50.0)
-        home_defence = self._get_rating(prior_ratings, home_team, "home_defence_rating", default=50.0)
-        away_defence = self._get_rating(prior_ratings, away_team, "away_defence_rating", default=50.0)
-        home_tempo = self._get_rating(prior_ratings, home_team, "tempo_index", default=50.0)
-        away_tempo = self._get_rating(prior_ratings, away_team, "tempo_index", default=50.0)
-        home_consistency = self._get_rating(prior_ratings, home_team, "consistency_index", default=50.0)
-        away_consistency = self._get_rating(prior_ratings, away_team, "consistency_index", default=50.0)
+        home_strength = self._get_rating(prior_ratings, home_team, "home_attack_rating", default=CONFIG.DEFAULT_RATING_BASELINE)
+        away_strength = self._get_rating(prior_ratings, away_team, "away_attack_rating", default=CONFIG.DEFAULT_RATING_BASELINE)
+        home_defence = self._get_rating(prior_ratings, home_team, "home_defence_rating", default=CONFIG.DEFAULT_RATING_BASELINE)
+        away_defence = self._get_rating(prior_ratings, away_team, "away_defence_rating", default=CONFIG.DEFAULT_RATING_BASELINE)
+        home_tempo = self._get_rating(prior_ratings, home_team, "tempo_index", default=CONFIG.DEFAULT_RATING_BASELINE)
+        away_tempo = self._get_rating(prior_ratings, away_team, "tempo_index", default=CONFIG.DEFAULT_RATING_BASELINE)
+        home_consistency = self._get_rating(prior_ratings, home_team, "consistency_index", default=CONFIG.DEFAULT_RATING_BASELINE)
+        away_consistency = self._get_rating(prior_ratings, away_team, "consistency_index", default=CONFIG.DEFAULT_RATING_BASELINE)
         home_advantage = self._get_rating(prior_ratings, home_team, "home_corner_advantage", default=0.0)
         away_penalty = self._get_rating(prior_ratings, away_team, "away_corner_penalty", default=0.0)
 
@@ -134,7 +136,7 @@ class FeatureStore:
             "expected_away_corner": expected_away_corner,
             "rating_difference": rating_difference,
             "tempo_difference": tempo_difference,
-            "home_advantage": home_advantage + away_penalty,
+            "home_advantage": (home_advantage + away_penalty) * CONFIG.HOME_ADVANTAGE_FACTOR,
             "home_std": home_std,
             "away_std": away_std,
             "combined_std": combined_std,

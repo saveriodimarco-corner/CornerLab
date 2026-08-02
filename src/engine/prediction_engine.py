@@ -7,13 +7,15 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 
+from src.config import CONFIG
+
 
 class PredictionEngine:
     """Deterministic corner prediction engine based on weighted ratings and Poisson probabilities."""
 
     def __init__(self) -> None:
         """Initialize the prediction engine."""
-        self._thresholds = [8.5, 9.5, 10.5, 11.5]
+        self._thresholds = list(CONFIG.DEFAULT_THRESHOLDS)
 
     def load_inputs(self, ratings_path: Union[str, Path], features_path: Union[str, Path]) -> pd.DataFrame:
         """Load rating and feature parquet files and merge them for prediction."""
@@ -49,8 +51,8 @@ class PredictionEngine:
 
         predictions: List[Dict[str, float]] = []
         for _, row in merged.iterrows():
-            home_rate = max(0.1, float(row.get("expected_home_corner", 0.0)))
-            away_rate = max(0.1, float(row.get("expected_away_corner", 0.0)))
+            home_rate = min(float(CONFIG.POISSON_LIMIT), max(0.1, float(row.get("expected_home_corner", 0.0))))
+            away_rate = min(float(CONFIG.POISSON_LIMIT), max(0.1, float(row.get("expected_away_corner", 0.0))))
             total_rate = home_rate + away_rate
 
             home_probs = self._predict_distribution(home_rate, row.get("home_corners", 0.0))
