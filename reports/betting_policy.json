@@ -1,0 +1,8 @@
+{
+  "thresholds": {
+    "minimum_ev": 0.05,
+    "minimum_confidence": 60.0,
+    "minimum_probability": 0.6,
+    "minimum_odds": 1.5
+  }
+}

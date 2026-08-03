@@ -1,0 +1,2 @@
+match_id,fixture_date,home_team,away_team,bookmaker,market,line,side,opening_odds,closing_odds,odds_timestamp,source,source_fixture_id,is_closing,currency,import_timestamp
+761,2025-08-23,Genoa,Lecce,ExampleBookmaker,TOTAL_CORNERS_OVER,8.5,OVER,2.10,2.50,2025-08-23T12:00:00,manual,fixture-1,true,EUR,2025-08-23T12:00:00
