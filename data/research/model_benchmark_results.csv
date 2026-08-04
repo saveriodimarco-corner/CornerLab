@@ -41,7 +41,7 @@ actual_total_corners,negative_binomial_regression,residual_standard_deviation,3.
 actual_total_corners,negative_binomial_regression,percentage_within_1_corner,0.23157894736842105
 actual_total_corners,negative_binomial_regression,percentage_within_2_corners,0.4394736842105263
 actual_total_corners,negative_binomial_regression,r2,-0.10444707825554111
-actual_total_corners,negative_binomial_regression,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x12730ddf0>
+actual_total_corners,negative_binomial_regression,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127bb8fd0>
 actual_total_corners,ridge_regression,mae,2.5796288397202005
 actual_total_corners,ridge_regression,rmse,3.2103434318436648
 actual_total_corners,ridge_regression,mean_prediction_bias,-0.49086192680472246
@@ -97,7 +97,7 @@ over_8_5,negative_binomial_probability,accuracy,0.4868421052631579
 over_8_5,negative_binomial_probability,precision,0.0
 over_8_5,negative_binomial_probability,recall,0.0
 over_8_5,negative_binomial_probability,f1,0.0
-over_8_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127643820>
+over_8_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127cdbb50>
 over_9_5,historical_base_rate_baseline,brier_score,0.24675207756232687
 over_9_5,historical_base_rate_baseline,log_loss,0.6866485479618505
 over_9_5,historical_base_rate_baseline,roc_auc,0.5
@@ -137,7 +137,7 @@ over_9_5,negative_binomial_probability,accuracy,0.5973684210526315
 over_9_5,negative_binomial_probability,precision,0.0
 over_9_5,negative_binomial_probability,recall,0.0
 over_9_5,negative_binomial_probability,f1,0.0
-over_9_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x1276a0940>
+over_9_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127d9fb80>
 over_10_5,historical_base_rate_baseline,brier_score,0.2126038781163435
 over_10_5,historical_base_rate_baseline,log_loss,0.6169760440661461
 over_10_5,historical_base_rate_baseline,roc_auc,0.5
@@ -177,7 +177,7 @@ over_10_5,negative_binomial_probability,accuracy,0.7078947368421052
 over_10_5,negative_binomial_probability,precision,0.0
 over_10_5,negative_binomial_probability,recall,0.0
 over_10_5,negative_binomial_probability,f1,0.0
-over_10_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127728610>
+over_10_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127de1bb0>
 over_11_5,historical_base_rate_baseline,brier_score,0.16016620498614959
 over_11_5,historical_base_rate_baseline,log_loss,0.502413665757408
 over_11_5,historical_base_rate_baseline,roc_auc,0.5
@@ -217,4 +217,4 @@ over_11_5,negative_binomial_probability,accuracy,0.8052631578947368
 over_11_5,negative_binomial_probability,precision,0.0
 over_11_5,negative_binomial_probability,recall,0.0
 over_11_5,negative_binomial_probability,f1,0.0
-over_11_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127776c70>
+over_11_5,negative_binomial_probability,model_object,<src.research.model_benchmark.NegativeBinomialRegressor object at 0x127e28c10>

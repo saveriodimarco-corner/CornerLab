@@ -1,0 +1,14 @@
+{
+  "accept_threshold": 70.0,
+  "watch_threshold": 50.0,
+  "feature_outlier_threshold": 0.8,
+  "model_disagreement_threshold": 0.7,
+  "data_quality_min": 0.25,
+  "team_bias_risk_threshold": 0.8,
+  "probability_distance_threshold": 0.05,
+  "prediction_distance_threshold": 0.2,
+  "accept_coverage": 0.005263157894736842,
+  "watch_coverage": 0.007894736842105263,
+  "abstain_coverage": 0.9868421052631579,
+  "accept_watch_coverage": 0.013157894736842105
+}

@@ -1,0 +1,2 @@
+provider_name,probe_date,competition,season,fixtures_found,fixtures_checked,corner_catalogue_entries,fixtures_with_corner_odds,bookmakers_found,lines_found,historical_retention,closing_odds_reconstructable,requests_consumed,final_verdict,fixture_details,corner_rows,limitations
+Sportmonks,2026-08-04T19:52:32.707254+00:00,Serie A,,0,0,[],0,[],[],NO_EVIDENCE,NO,0,AUTHENTICATION_REQUIRED,[],[],SPORTMONKS_API_TOKEN missing
