@@ -1,0 +1,7 @@
+provider,url,status_code,evidence_sha256,notes
+API-Football / API-Sports,https://v3.football.api-sports.io/status,200,7cd85494eb375cc958155aca095fd0bae01e24f777c4ce4059e2edb82324618c,Authenticated status endpoint returned account and subscription details.
+API-Football / API-Sports,https://v3.football.api-sports.io/leagues?country=Italy,200,9e12d09a3c22c8a2b8398210f99c819d58b8ceb2ce71f689047dbf7e09aa3a01,Returned Serie A league 135 and season coverage metadata.
+API-Football / API-Sports,https://v3.football.api-sports.io/fixtures?league=135&season=2023,200,038226bec83d766c4c6148dc245c8ae9e63257ed8c0d7ac09420bf5f48948aa1,Returned Serie A 2023 fixtures.
+API-Football / API-Sports,https://v3.football.api-sports.io/odds?fixture=1,200,57641a3286dad5dcd6f5239961c101cdecf4a68b2865b0016a9cbfd25db29110,Returned empty odds payload for fixture 1; no corner market evidence from this probe.
+TheStatsAPI,https://api.thestatsapi.com/api/health,200,b808daea0f225957b3cddad9d5e33cb8dd4da1dbfc1d764e291f8d2e9fa4f857,Health endpoint responded successfully.
+TheStatsAPI,https://api.thestatsapi.com/api/football/competitions,403,3dbf019c6ecca88dbf68055f7e1f4ca6c862a8ca8c8dfc9e59604085cf970b3a,Protected endpoints were rejected due the provider's subscription error.

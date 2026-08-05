@@ -1,0 +1,40 @@
+{
+  "cache_version": "historical-foundation-v1",
+  "cache_status": "cache_hit",
+  "fingerprint": "4a97bcba479443a0e1945518ec0953d8c217f57f2698f0f846c64263860b56f8",
+  "generated_at": "2026-08-05T07:58:33Z",
+  "artifacts": [
+    "data/raw/serie_a_matches.csv",
+    "data/processed/serie_a_matches.parquet",
+    "data/raw/serie_a_historical.db",
+    "data/research/research_dataset.parquet",
+    "reports/database_validation.md",
+    "reports/descriptive_statistics.md",
+    "reports/total_corners_histogram.html",
+    "reports/total_corners_qq.html",
+    "reports/corner_correlation_matrix.html",
+    "reports/data_provenance.md",
+    "data/processed/source_manifest.csv",
+    "docs/DATA_DICTIONARY.md"
+  ],
+  "source_files": [
+    {
+      "season": "2023/24",
+      "path": "/Users/saverio/Documents/CornerLab/CornerLab/data/raw/football_data/I1_2324.csv",
+      "sha256": "343a89db026fe4204ebeabd663cdfee8d02a45457828fc1cb63fa630ca170723",
+      "size": 167015
+    },
+    {
+      "season": "2024/25",
+      "path": "/Users/saverio/Documents/CornerLab/CornerLab/data/raw/football_data/I1_2425.csv",
+      "sha256": "79d87a5b18771e066ac7419b7876bfd9771a68ca117a9712375d6bc9685abee3",
+      "size": 191722
+    },
+    {
+      "season": "2025/26",
+      "path": "/Users/saverio/Documents/CornerLab/CornerLab/data/raw/football_data/I1_2526.csv",
+      "sha256": "709ae279617d16af226312bcceac941e71241745ddaf950bdac2b83afad4fcbb",
+      "size": 196217
+    }
+  ]
+}

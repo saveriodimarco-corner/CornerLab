@@ -1,0 +1,2 @@
+season,sampled_matches,matches_with_any_odds,matches_with_corner_odds,corner_coverage_pct,matches_with_both_over_under,matches_with_opening_odds,matches_with_closing_or_last_seen_odds,bookmakers_found,target_lines_found,fixture_mapping_success_rate,notes
+authentication_blocked,0,0,0,0.0,0,0,0,none,none,0.0,Protected endpoints rejected the API key before historical Serie A odds could be queried.

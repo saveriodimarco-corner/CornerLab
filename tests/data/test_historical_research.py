@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -41,3 +42,20 @@ def test_historical_research_pipeline(tmp_path, monkeypatch) -> None:
 
     provenance_report = tmp_path / "reports" / "data_provenance.md"
     assert provenance_report.exists()
+
+
+def test_historical_research_cache_reuses_artifacts(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    build_research_foundation()
+
+    metadata_path = tmp_path / "data" / "research" / "cache" / "historical_foundation" / "metadata.json"
+    assert metadata_path.exists()
+
+    first_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert first_metadata["cache_status"] == "rebuilt"
+
+    build_research_foundation()
+    second_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    assert second_metadata["cache_status"] == "cache_hit"
+    assert second_metadata["fingerprint"] == first_metadata["fingerprint"]

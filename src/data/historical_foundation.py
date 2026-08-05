@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -23,6 +25,23 @@ OFFICIAL_SOURCE_FILES = {
     "2025/26": "data/raw/football_data/I1_2526.csv",
 }
 
+CACHE_VERSION = "historical-foundation-v1"
+CACHE_ROOT_RELATIVE_PATH = Path("data") / "research" / "cache" / "historical_foundation"
+CACHE_ARTIFACTS = (
+    Path("data/raw/serie_a_matches.csv"),
+    Path("data/processed/serie_a_matches.parquet"),
+    Path("data/raw/serie_a_historical.db"),
+    Path("data/research/research_dataset.parquet"),
+    Path("reports/database_validation.md"),
+    Path("reports/descriptive_statistics.md"),
+    Path("reports/total_corners_histogram.html"),
+    Path("reports/total_corners_qq.html"),
+    Path("reports/corner_correlation_matrix.html"),
+    Path("reports/data_provenance.md"),
+    Path("data/processed/source_manifest.csv"),
+    Path("docs/DATA_DICTIONARY.md"),
+)
+
 
 def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path, Path, Path, Path]:
     base_dir = base_dir or Path.cwd()
@@ -31,9 +50,49 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     research_dir = base_dir / "data" / "research"
     reports_dir = base_dir / "reports"
     docs_dir = base_dir / "docs"
-    for directory in [raw_dir, processed_dir, research_dir, reports_dir, docs_dir]:
+    cache_dir = base_dir / CACHE_ROOT_RELATIVE_PATH
+    for directory in [raw_dir, processed_dir, research_dir, reports_dir, docs_dir, cache_dir]:
         directory.mkdir(parents=True, exist_ok=True)
 
+    fingerprint = build_historical_fingerprint(base_dir)
+    stats = load_cache_stats(cache_dir)
+    metadata_path = cache_dir / "metadata.json"
+    metadata = load_cache_metadata(metadata_path)
+    cache_hit = False
+
+    if metadata_path.exists() and metadata.get("fingerprint") == fingerprint and metadata.get("cache_version") == CACHE_VERSION:
+        cache_artifact_paths = [cache_dir / artifact.as_posix() for artifact in CACHE_ARTIFACTS]
+        if all(path.exists() for path in cache_artifact_paths):
+            restore_cached_artifacts(base_dir, cache_dir)
+            cache_hit = True
+
+    if cache_hit:
+        start_time = time.perf_counter()
+        restore_cached_artifacts(base_dir, cache_dir)
+        stats["cache_hits"] += 1
+        stats["last_cache_hit_seconds"] = round(time.perf_counter() - start_time, 4)
+        stats["last_cache_status"] = "cache_hit"
+        stats["last_cache_fingerprint"] = fingerprint
+        write_cache_stats(cache_dir, stats)
+        metadata = {
+            "cache_version": CACHE_VERSION,
+            "cache_status": "cache_hit",
+            "fingerprint": fingerprint,
+            "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "artifacts": [artifact.as_posix() for artifact in CACHE_ARTIFACTS],
+            "source_files": gather_source_file_manifest(base_dir),
+        }
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        write_research_cache_report(base_dir, stats, metadata)
+        return (
+            base_dir / "data" / "raw" / "serie_a_matches.csv",
+            base_dir / "data" / "processed" / "serie_a_matches.parquet",
+            base_dir / "data" / "raw" / "serie_a_historical.db",
+            base_dir / "data" / "research" / "research_dataset.parquet",
+            base_dir / "reports" / "database_validation.md",
+        )
+
+    start_time = time.perf_counter()
     matches_df = generate_serie_a_matches(base_dir)
     csv_path = raw_dir / "serie_a_matches.csv"
     matches_df.to_csv(csv_path, index=False)
@@ -52,7 +111,7 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     validation_path = reports_dir / "database_validation.md"
     validation_path.write_text(validation_report, encoding="utf-8")
 
-    descriptive_report, _ = build_descriptive_report(matches_df, reports_dir)
+    descriptive_report, descriptive_artifacts = build_descriptive_report(matches_df, reports_dir)
     descriptive_path = reports_dir / "descriptive_statistics.md"
     descriptive_path.write_text(descriptive_report, encoding="utf-8")
 
@@ -60,6 +119,36 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     dictionary_path.write_text(build_data_dictionary(research_df), encoding="utf-8")
 
     verify_provenance(base_dir)
+
+    cache_artifacts = [
+        csv_path,
+        canonical_path,
+        db_path,
+        research_path,
+        validation_path,
+        descriptive_path,
+        *descriptive_artifacts,
+        reports_dir / "data_provenance.md",
+        processed_dir / "source_manifest.csv",
+        dictionary_path,
+    ]
+    persist_cached_artifacts(base_dir, cache_dir, cache_artifacts)
+
+    stats["rebuilds"] += 1
+    stats["last_rebuild_seconds"] = round(time.perf_counter() - start_time, 4)
+    stats["last_cache_status"] = "rebuilt"
+    stats["last_cache_fingerprint"] = fingerprint
+    write_cache_stats(cache_dir, stats)
+    metadata = {
+        "cache_version": CACHE_VERSION,
+        "cache_status": "rebuilt",
+        "fingerprint": fingerprint,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "artifacts": [artifact.as_posix() for artifact in CACHE_ARTIFACTS],
+        "source_files": gather_source_file_manifest(base_dir),
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    write_research_cache_report(base_dir, stats, metadata)
 
     return csv_path, canonical_path, db_path, research_path, validation_path
 
@@ -388,6 +477,146 @@ def describe_column(column: str) -> str:
 def compute_row_hash(row: Dict[str, Any]) -> str:
     payload = json.dumps(row, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def build_historical_fingerprint(base_dir: Path) -> str:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload: Dict[str, Any] = {
+        "cache_version": CACHE_VERSION,
+        "source_files": gather_source_file_manifest(base_dir),
+        "builder_modules": [],
+        "model_artifacts": [],
+    }
+
+    for module_path in [
+        "src/data/historical_foundation.py",
+        "src/data/provenance.py",
+        "src/engine/feature_store.py",
+        "src/data/normalizer.py",
+    ]:
+        full_path = repo_root / module_path
+        if full_path.exists():
+            payload["builder_modules"].append(
+                {
+                    "path": module_path,
+                    "sha256": sha256_file(full_path),
+                    "size": full_path.stat().st_size,
+                }
+            )
+
+    model_dir = repo_root / "models" / "research"
+    if model_dir.exists():
+        for model_path in sorted(model_dir.rglob("*")):
+            if model_path.is_file():
+                payload["model_artifacts"].append(
+                    {
+                        "path": model_path.relative_to(repo_root).as_posix(),
+                        "sha256": sha256_file(model_path),
+                        "size": model_path.stat().st_size,
+                    }
+                )
+
+    serialized = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def gather_source_file_manifest(base_dir: Path) -> List[Dict[str, Any]]:
+    manifest: List[Dict[str, Any]] = []
+    for season in ["2023/24", "2024/25", "2025/26"]:
+        source_path = resolve_source_path(base_dir, season)
+        manifest.append(
+            {
+                "season": season,
+                "path": source_path.as_posix(),
+                "sha256": sha256_file(source_path) if source_path.exists() else None,
+                "size": source_path.stat().st_size if source_path.exists() else None,
+            }
+        )
+    return manifest
+
+
+def persist_cached_artifacts(base_dir: Path, cache_dir: Path, artifact_paths: List[Path]) -> None:
+    for artifact in artifact_paths:
+        if not artifact.exists():
+            continue
+        cached_path = cache_dir / artifact.relative_to(base_dir).as_posix() if artifact.is_absolute() else cache_dir / artifact.as_posix()
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(artifact, cached_path)
+
+
+def restore_cached_artifacts(base_dir: Path, cache_dir: Path) -> None:
+    for artifact in CACHE_ARTIFACTS:
+        cached_path = cache_dir / artifact.as_posix()
+        target_path = base_dir / artifact.as_posix()
+        if cached_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cached_path, target_path)
+
+
+def load_cache_metadata(metadata_path: Path) -> Dict[str, Any]:
+    if not metadata_path.exists():
+        return {}
+    try:
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def load_cache_stats(cache_dir: Path) -> Dict[str, Any]:
+    stats_path = cache_dir / "stats.json"
+    if not stats_path.exists():
+        return {"rebuilds": 0, "cache_hits": 0, "last_rebuild_seconds": None, "last_cache_hit_seconds": None, "last_cache_status": None, "last_cache_fingerprint": None}
+    try:
+        return json.loads(stats_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"rebuilds": 0, "cache_hits": 0, "last_rebuild_seconds": None, "last_cache_hit_seconds": None, "last_cache_status": None, "last_cache_fingerprint": None}
+
+
+def write_cache_stats(cache_dir: Path, stats: Dict[str, Any]) -> None:
+    stats_path = cache_dir / "stats.json"
+    stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+
+
+def write_research_cache_report(base_dir: Path, stats: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    report_path = base_dir / "reports" / "research_cache.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    previous_runtime = stats.get("last_rebuild_seconds")
+    cached_runtime = stats.get("last_cache_hit_seconds")
+    total_runs = int(stats.get("rebuilds", 0)) + int(stats.get("cache_hits", 0))
+    hit_ratio = round((int(stats.get("cache_hits", 0)) / total_runs * 100.0), 2) if total_runs else 0.0
+    performance_improvement = None
+    if previous_runtime and cached_runtime:
+        performance_improvement = round(((previous_runtime - cached_runtime) / previous_runtime) * 100.0, 2) if previous_runtime > 0 else 0.0
+
+    lines = [
+        "# Historical Research Cache",
+        "",
+        "## Summary",
+        f"- Previous runtime: {previous_runtime if previous_runtime is not None else 'n/a'}s",
+        f"- Cached runtime: {cached_runtime if cached_runtime is not None else 'n/a'}s",
+        f"- Cache hit ratio: {hit_ratio:.2f}%",
+        "- Cache invalidation policy: invalidate when the cache version changes or when any source CSV, builder module, or model artifact fingerprint changes.",
+        "- Files cached:",
+    ]
+    for artifact in metadata.get("artifacts", []):
+        lines.append(f"  - {artifact}")
+    lines.extend(
+        [
+            "",
+            f"- Performance improvement: {performance_improvement if performance_improvement is not None else 'n/a'}%",
+            f"- Fingerprint: {metadata.get('fingerprint', 'n/a')}",
+        ]
+    )
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> None:

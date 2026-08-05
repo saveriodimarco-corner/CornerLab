@@ -1,0 +1,41 @@
+# Feature Correlation
+
+                  feature  pearson  spearman
+             home_corners    0.704     0.679
+             away_corners    0.533     0.506
+away_last5_corner_against    0.103     0.117
+         tempo_difference    0.073     0.076
+home_last5_corner_against    0.038     0.036
+       home_attack_rating    0.030     0.033
+        rating_difference    0.027     0.033
+   home_last10_corner_for    0.022     0.036
+               home_tempo   -0.002    -0.002
+      home_defence_rating   -0.004    -0.009
+       away_attack_rating   -0.008    -0.003
+     expected_away_corner   -0.009    -0.008
+                 away_std   -0.012     0.013
+         home_consistency   -0.014    -0.024
+    home_last5_corner_for   -0.014     0.000
+               away_goals   -0.020    -0.012
+    away_last5_corner_for   -0.022    -0.021
+   away_last10_corner_for   -0.023    -0.012
+             combined_std   -0.024     0.021
+                 home_std   -0.027    -0.007
+    expected_total_corner   -0.044    -0.039
+           home_advantage   -0.045    -0.047
+               home_goals   -0.047    -0.044
+         away_consistency   -0.052    -0.054
+     expected_home_corner   -0.067    -0.065
+               away_tempo   -0.103    -0.101
+      away_defence_rating   -0.129    -0.127
+                   over85      NaN       NaN
+                   over95      NaN       NaN
+                  over105      NaN       NaN
+                  over115      NaN       NaN
+                  under85      NaN       NaN
+                  under95      NaN       NaN
+                 under105      NaN       NaN
+                 under115      NaN       NaN
+
+## Heatmap
+- Heatmap: [feature_correlation_heatmap.html](feature_correlation_heatmap.html)
