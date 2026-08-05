@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from src.collector.collector_config import CollectorConfig
@@ -14,25 +13,14 @@ class LiveProviderAdapter:
         self.last_resolution: Dict[str, Any] | None = None
 
     def fetch_fixtures(self) -> List[Dict[str, Any]]:
-        league = self.api_football.resolve_serie_a_league()
-        league_id = league.get("league_id")
-        season = league.get("season")
-        if league_id is None or season is None:
-            self.last_resolution = {
-                "collector_mode": "NO FIXTURES AVAILABLE",
-                "provider": "api_football",
-                "fixtures": [],
-            }
-            return []
-
-        today = datetime.now(timezone.utc).date()
-        from_date = today.strftime("%Y-%m-%d")
-        to_date = (today + timedelta(days=7)).strftime("%Y-%m-%d")
+        league_id = 135
+        season = 2026
         try:
-            fixtures = self.api_football.list_upcoming_fixtures_with_date_range(league_id, season, from_date=from_date, to_date=to_date)
+            payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 7})
         except Exception:
-            fixtures = []
+            payload = {}
 
+        fixtures = payload.get("response", []) if isinstance(payload, dict) else []
         self.last_resolution = {
             "collector_mode": "LIVE_COLLECTION READY" if fixtures else "NO FIXTURES AVAILABLE",
             "provider": "api_football",
