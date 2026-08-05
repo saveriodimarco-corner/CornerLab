@@ -9,6 +9,7 @@ from .fixture_collector import FixtureCollector
 from .odds_collector import OddsCollector
 from .result_resolver import ResultResolver
 from .live_provider_adapter import LiveProviderAdapter
+from .provider_router import ProviderRouter
 
 
 class CollectorScheduler:
@@ -19,6 +20,7 @@ class CollectorScheduler:
         self.odds_collector = OddsCollector(config, repo)
         self.result_resolver = ResultResolver(config, repo)
         self.live_adapter = LiveProviderAdapter(config)
+        self.provider_router = ProviderRouter(config)
 
     def run(self, mode: str = "ONE_SHOT") -> Dict[str, Any]:
         writes = 0
@@ -29,9 +31,16 @@ class CollectorScheduler:
         updated = 0
         snapshots = 0
         corner_snapshots = 0
-        collector_mode = self.live_adapter.last_resolution.get("collector_mode", "NO FIXTURES AVAILABLE") if self.live_adapter.last_resolution else "NO FIXTURES AVAILABLE"
+        resolution = self.live_adapter.last_resolution or {}
+        collector_mode = resolution.get("collector_mode", "NO FIXTURES AVAILABLE")
+        readiness_state = self.provider_router.build_readiness_state(resolution)
+        if readiness_state["state"] == "BLOCKED":
+            provider_name = self.provider_router.route(str(resolution.get("provider") or "api-football"))
+            self.repo.record_error(provider_name, resolution.get("redacted_api_error_message") or resolution.get("api_error_message") or collector_mode, "fixture")
+            self.repo.insert_run(mode=mode, status="ok", writes=0, fixtures_discovered=0, fixtures_updated=0, odds_snapshots_stored=0, genuine_corner_odds_stored=0, completed_fixtures_resolved=0, readiness_verdict=collector_mode)
+            return {"status": "ok", "mode": mode, "writes": 0, "deterministic": True, "collector_mode": collector_mode, "readiness_state": readiness_state["state"]}
         if not fixtures:
-            collector_mode = self.live_adapter.last_resolution.get("collector_mode", "NO FIXTURES AVAILABLE") if self.live_adapter.last_resolution else "NO FIXTURES AVAILABLE"
+            collector_mode = resolution.get("collector_mode", "NO FIXTURES AVAILABLE")
         for fixture in fixtures:
             discovered += 1
             saved = self.fixture_collector.collect_from_provider(fixture)
@@ -59,4 +68,4 @@ class CollectorScheduler:
                     if payload.get("market", "").upper().startswith("TOTAL_CORNERS"):
                         corner_snapshots += 1
         self.repo.insert_run(mode=mode, status="ok", writes=writes, fixtures_discovered=discovered, fixtures_updated=updated, odds_snapshots_stored=snapshots, genuine_corner_odds_stored=corner_snapshots, completed_fixtures_resolved=0, readiness_verdict=collector_mode)
-        return {"status": "ok", "mode": mode, "writes": writes, "deterministic": True, "collector_mode": collector_mode}
+        return {"status": "ok", "mode": mode, "writes": writes, "deterministic": True, "collector_mode": collector_mode, "readiness_state": readiness_state["state"]}

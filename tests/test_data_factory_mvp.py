@@ -8,8 +8,10 @@ import pytest
 
 from src.collector.collector_config import CollectorConfig
 from src.collector.collector_repository import CollectorRepository
+from src.collector.collector_health import CollectorHealth
 from src.collector.fixture_collector import FixtureCollector
 from src.collector.odds_collector import OddsCollector
+from src.collector.provider_router import ProviderRouter
 from src.collector.result_resolver import ResultResolver
 from src.collector.snapshot_engine import SnapshotEngine
 from src.collector.scheduler import CollectorScheduler
@@ -200,3 +202,46 @@ def test_deterministic_outputs(temp_repo):
     first = scheduler.run(mode="DRY_RUN")
     second = scheduler.run(mode="DRY_RUN")
     assert first == second
+
+
+def test_provider_router_builds_readiness_state_for_blocked_provider():
+    router = ProviderRouter(CollectorConfig())
+    readiness = router.build_readiness_state({
+        "collector_mode": "PROVIDER PLAN RESTRICTION",
+        "provider_response_category": "PROVIDER PLAN RESTRICTION",
+        "fixtures": [],
+        "requested_season": 2026,
+        "effective_season": 2026,
+    })
+    assert readiness["state"] == "BLOCKED"
+    assert readiness["can_collect_fixtures"] is False
+
+
+def test_scheduler_skips_writes_when_provider_is_blocked(temp_repo, monkeypatch):
+    config, repo = temp_repo
+    scheduler = CollectorScheduler(config, repo)
+    monkeypatch.setattr(scheduler.live_adapter, "fetch_fixtures", lambda: [])
+    scheduler.live_adapter.last_resolution = {
+        "collector_mode": "PROVIDER PLAN RESTRICTION",
+        "provider_response_category": "PROVIDER PLAN RESTRICTION",
+        "requested_season": 2026,
+        "effective_season": 2026,
+        "provider": "api_football",
+    }
+    run = scheduler.run(mode="ONE_SHOT")
+    assert run["writes"] == 0
+    assert repo.list_errors("api_football")
+
+
+def test_health_report_includes_readiness_details(temp_repo):
+    config, repo = temp_repo
+    health = CollectorHealth(config, repo, {
+        "collector_mode": "PROVIDER PLAN RESTRICTION",
+        "provider_response_category": "PROVIDER PLAN RESTRICTION",
+        "requested_season": 2026,
+        "effective_season": 2026,
+        "provider": "api_football",
+    })
+    report = health.build_report()
+    assert report["readiness_state"] == "BLOCKED"
+    assert report["provider_capabilities"]["fixtures"] is False

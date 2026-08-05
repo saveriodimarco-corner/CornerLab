@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from .collector_config import CollectorConfig
 from .collector_repository import CollectorRepository
+from .provider_router import ProviderRouter
 
 
 class CollectorHealth:
@@ -12,9 +13,11 @@ class CollectorHealth:
         self.config = config
         self.repo = repo
         self.last_resolution = last_resolution or {}
+        self.provider_router = ProviderRouter(config)
 
     def build_report(self) -> Dict[str, Any]:
         resolution = self.last_resolution or {}
+        readiness = self.provider_router.build_readiness_state(resolution)
         return {
             "fixtures_discovered": self.repo.count_fixtures(),
             "fixtures_stored": self.repo.count_fixtures(),
@@ -27,4 +30,7 @@ class CollectorHealth:
             "redacted_api_error_message": resolution.get("redacted_api_error_message") or resolution.get("api_error_message"),
             "recommended_action": resolution.get("recommended_action") or "Review provider availability and retry",
             "readiness_verdict": resolution.get("collector_mode") or "LIVE_COLLECTION READY",
+            "readiness_state": readiness["state"],
+            "readiness_reason": readiness["reason"],
+            "provider_capabilities": readiness["capabilities"],
         }
