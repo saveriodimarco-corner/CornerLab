@@ -6,6 +6,10 @@ import numpy as np
 import pandas as pd
 
 
+class FeatureSelectionContractError(ValueError):
+    """Raised when feature selection is invoked without a precomputed signal_score contract."""
+
+
 class FeatureSelectionEngine:
     def __init__(self) -> None:
         self.correlation_threshold = 0.85
@@ -16,7 +20,16 @@ class FeatureSelectionEngine:
             return []
 
         dataframe = feature_dataframe.copy()
-        numeric_columns = [column for column in dataframe.columns if pd.api.types.is_numeric_dtype(dataframe[column])]
+        if "signal_score" not in dataframe.columns:
+            raise FeatureSelectionContractError(
+                "FeatureSelectionEngine requires signal_score from FeatureImportanceEngine; missing signal_score is a contract violation"
+            )
+
+        numeric_columns = [
+            column
+            for column in dataframe.columns
+            if column != "signal_score" and pd.api.types.is_numeric_dtype(dataframe[column])
+        ]
         if not numeric_columns:
             return []
 
