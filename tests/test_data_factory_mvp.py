@@ -138,6 +138,51 @@ def test_opening_and_closing_odds_selection(temp_repo):
     assert closing["decimal_odds"] == 2.40
 
 
+def test_first_empty_odds_response_marks_pending_retry(temp_repo):
+    config, repo = temp_repo
+    collector = OddsCollector(config, repo)
+    result = collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [], provider="api-football")
+    assert result["checked"] == 1
+    assert result["downloaded"] == 0
+    assert result["inserted"] == 0
+    status = repo.get_odds_status(1, provider="api-football")
+    assert status is not None
+    assert status["status"] == "ODDS_NOT_AVAILABLE_YET"
+
+
+def test_skip_before_ttl_expires(temp_repo):
+    config, repo = temp_repo
+    collector = OddsCollector(config, repo)
+    collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [], provider="api-football")
+    second = collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [{"bookmaker": "bet365", "market": "TOTAL_CORNERS", "line": "8.5", "side": "OVER", "odd": 2.10}], provider="api-football")
+    assert second["skipped"] is True
+    assert second["checked"] == 0
+    assert repo.count_snapshots() == 0
+
+
+def test_retry_after_ttl_and_odds_become_available(temp_repo):
+    config, repo = temp_repo
+    config.odds_retry_ttl_minutes = 0
+    collector = OddsCollector(config, repo)
+    collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [], provider="api-football")
+    second = collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [{"bookmaker": "bet365", "market": "TOTAL_CORNERS", "line": "8.5", "side": "OVER", "odd": 2.10}], provider="api-football")
+    assert second["checked"] == 1
+    assert second["downloaded"] == 1
+    assert second["inserted"] == 1
+    assert repo.get_odds_status(1, provider="api-football") is None
+    assert repo.count_snapshots() == 1
+
+
+def test_normal_odds_persistence_is_unchanged(temp_repo):
+    config, repo = temp_repo
+    collector = OddsCollector(config, repo)
+    result = collector.collect_odds_for_fixture(1, "fix-1", lambda fixture_id: [{"bookmaker": "bet365", "market": "TOTAL_CORNERS", "line": "8.5", "side": "OVER", "odd": 2.10}], provider="api-football")
+    assert result["checked"] == 1
+    assert result["inserted"] == 1
+    assert repo.count_snapshots() == 1
+    assert repo.get_odds_status(1, provider="api-football") is None
+
+
 def test_in_play_odds_excluded_from_closing(temp_repo):
     config, repo = temp_repo
     engine = SnapshotEngine(config, repo)

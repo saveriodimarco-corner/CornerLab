@@ -48,10 +48,41 @@ class LiveProviderAdapter:
     def fetch_odds(self, fixture_id: str) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         for entry in self.api_football.fetch_fixture_odds(fixture_id):
-            payload = entry.get("response", []) if isinstance(entry, dict) else []
-            if not isinstance(payload, list):
+            if not isinstance(entry, dict):
                 continue
-            for row in payload:
-                if isinstance(row, dict):
-                    rows.append(row)
+            bookmaker_payload = entry.get("bookmaker")
+            bookmaker_name = bookmaker_payload.get("name") if isinstance(bookmaker_payload, dict) else None
+            bets = entry.get("bets", [])
+            if not isinstance(bets, list):
+                continue
+            for bet in bets:
+                if not isinstance(bet, dict):
+                    continue
+                market_name = str(bet.get("name") or "UNKNOWN")
+                values = bet.get("values", []) or []
+                if not isinstance(values, list):
+                    continue
+                for value in values:
+                    if not isinstance(value, dict):
+                        continue
+                    odd = value.get("odd")
+                    raw_value = value.get("value")
+                    if odd is None or raw_value is None:
+                        continue
+                    line = str(raw_value)
+                    side = ""
+                    lowered_value = line.lower()
+                    lowered_market = market_name.lower()
+                    if "over" in lowered_value or "over" in lowered_market:
+                        side = "OVER"
+                    elif "under" in lowered_value or "under" in lowered_market:
+                        side = "UNDER"
+                    rows.append({
+                        "bookmaker": bookmaker_name or "unknown",
+                        "market": market_name,
+                        "market_id": bet.get("id"),
+                        "line": line,
+                        "side": side,
+                        "odd": odd,
+                    })
         return rows

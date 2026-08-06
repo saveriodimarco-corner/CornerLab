@@ -26,6 +26,7 @@ class CollectorConfig:
     request_timeout_seconds: int = 15
     max_retries: int = 2
     rate_limit_threshold: int = 20
+    odds_retry_ttl_minutes: int = 30
     reports_dir: Path = field(default_factory=lambda: REPO_ROOT / "reports")
     docs_dir: Path = field(default_factory=lambda: REPO_ROOT / "docs")
     data_dir: Path = field(default_factory=lambda: REPO_ROOT / "data")

@@ -117,6 +117,18 @@ class CollectorRepository:
                     rate_limited INTEGER,
                     created_at TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS collector_odds_status (
+                    status_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    provider TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    checked_at TEXT,
+                    next_retry_after TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    UNIQUE(fixture_id, provider)
+                );
                 """
             )
             conn.commit()
@@ -366,5 +378,53 @@ class CollectorRepository:
         conn = sqlite3.connect(self.db_path)
         try:
             return int(conn.execute("SELECT COUNT(*) FROM collector_results").fetchone()[0])
+        finally:
+            conn.close()
+
+    def get_odds_status(self, fixture_id: int, provider: str = "api-football") -> Optional[Dict[str, Any]]:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT * FROM collector_odds_status WHERE fixture_id = ? AND provider = ?",
+                (fixture_id, provider),
+            ).fetchone()
+            return dict(row) if row is not None else None
+        finally:
+            conn.close()
+
+    def upsert_odds_status(self, fixture_id: int, provider: str, status: str, checked_at: Optional[str] = None, next_retry_after: Optional[str] = None) -> Dict[str, Any]:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            now = self.config.now_utc()
+            existing = self.get_odds_status(fixture_id, provider)
+            if existing is None:
+                cur = conn.execute(
+                    "INSERT INTO collector_odds_status (fixture_id, provider, status, checked_at, next_retry_after, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (fixture_id, provider, status, checked_at, next_retry_after, now, now),
+                )
+                conn.commit()
+                return {"status_id": cur.lastrowid, "fixture_id": fixture_id, "provider": provider, "status": status, "checked_at": checked_at, "next_retry_after": next_retry_after, "created_at": now, "updated_at": now}
+            conn.execute(
+                "UPDATE collector_odds_status SET status = ?, checked_at = ?, next_retry_after = ?, updated_at = ? WHERE fixture_id = ? AND provider = ?",
+                (status, checked_at, next_retry_after, now, fixture_id, provider),
+            )
+            conn.commit()
+            return {**existing, "status": status, "checked_at": checked_at, "next_retry_after": next_retry_after, "updated_at": now}
+        finally:
+            conn.close()
+
+    def delete_odds_status(self, fixture_id: int, provider: str = "api-football") -> None:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("DELETE FROM collector_odds_status WHERE fixture_id = ? AND provider = ?", (fixture_id, provider))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def count_pending_odds_retries(self) -> int:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            return int(conn.execute("SELECT COUNT(*) FROM collector_odds_status WHERE status = ?", ("ODDS_NOT_AVAILABLE_YET",)).fetchone()[0])
         finally:
             conn.close()

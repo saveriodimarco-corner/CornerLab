@@ -21,6 +21,11 @@ class CollectorHealth:
         return {
             "fixtures_discovered": self.repo.count_fixtures(),
             "fixtures_stored": self.repo.count_fixtures(),
+            "odds_checked": 0,
+            "odds_skipped_by_ttl": 0,
+            "odds_pending_retry": self.repo.count_pending_odds_retries(),
+            "odds_downloaded": 0,
+            "odds_inserted": 0,
             "odds_snapshots_stored": self.repo.count_snapshots(),
             "completed_fixtures_resolved": self.repo.count_results(),
             "provider": resolution.get("provider") or "api-football",
