@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import pandas as pd
+
+from src.research.feature_selection_engine import FeatureSelectionEngine
+
+
+def test_constant_feature_is_dropped() -> None:
+    engine = FeatureSelectionEngine()
+    dataframe = pd.DataFrame({"constant_feature": [1, 1, 1, 1]})
+
+    results = engine.evaluate(dataframe)
+
+    assert len(results) == 1
+    assert results[0]["feature_name"] == "constant_feature"
+    assert results[0]["selection_status"] == "DROP"
+    assert results[0]["constant_feature"] == "YES"
+    assert results[0]["variance"] == 0.0
+
+
+def test_missing_feature_is_dropped() -> None:
+    engine = FeatureSelectionEngine()
+    dataframe = pd.DataFrame({"missing_feature": [1.0, 2.0, None, None, None]})
+
+    results = engine.evaluate(dataframe)
+
+    assert len(results) == 1
+    assert results[0]["selection_status"] == "DROP"
+    assert results[0]["missing_ratio"] > 0.25
+
+
+def test_duplicated_feature_is_reviewed() -> None:
+    engine = FeatureSelectionEngine()
+    dataframe = pd.DataFrame(
+        {
+            "feature_a": [0.0, 1.0, 2.0, 3.0],
+            "feature_b": [0.0, 1.0, 2.0, 3.0],
+        }
+    )
+
+    results = engine.evaluate(dataframe)
+
+    by_name = {item["feature_name"]: item for item in results}
+
+    assert by_name["feature_a"]["selection_status"] == "REVIEW"
+    assert by_name["feature_a"]["correlated_feature"] == "feature_b"
+    assert by_name["feature_b"]["selection_status"] == "REVIEW"
+
+
+def test_correlated_feature_is_reviewed() -> None:
+    engine = FeatureSelectionEngine()
+    dataframe = pd.DataFrame(
+        {
+            "feature_a": [0.0, 1.0, 2.0, 3.0],
+            "feature_b": [0.0, 1.1, 2.2, 3.3],
+        }
+    )
+
+    results = engine.evaluate(dataframe)
+
+    by_name = {item["feature_name"]: item for item in results}
+
+    assert by_name["feature_a"]["selection_status"] == "REVIEW"
+    assert by_name["feature_b"]["selection_status"] == "REVIEW"
+
+
+def test_healthy_feature_is_kept() -> None:
+    engine = FeatureSelectionEngine()
+    dataframe = pd.DataFrame(
+        {
+            "healthy_feature": [0.0, 1.0, 2.0, 3.0, 4.0],
+            "other_feature": [1.0, 0.0, 1.0, 0.0, 1.0],
+        }
+    )
+
+    results = engine.evaluate(dataframe)
+
+    by_name = {item["feature_name"]: item for item in results}
+
+    assert by_name["healthy_feature"]["selection_status"] == "KEEP"
+    assert by_name["healthy_feature"]["constant_feature"] == "NO"
+    assert by_name["healthy_feature"]["missing_ratio"] == 0.0
+
+
+def test_empty_dataframe_returns_no_results() -> None:
+    engine = FeatureSelectionEngine()
+
+    result = engine.evaluate(pd.DataFrame())
+
+    assert result == []
