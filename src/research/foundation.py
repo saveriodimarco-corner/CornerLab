@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Sequence
@@ -14,13 +13,14 @@ VALID_FEATURE_STATUSES = (
     "REJECTED",
     "DEPRECATED",
 )
+VALID_FEATURE_TIERS = ("FUNDAMENTAL", "CONTEXT", "MARKET", "EXPERIMENTAL")
 
 
 class LeakageError(RuntimeError):
     """Raised when a feature is used after its data would have been available."""
 
 
-class ResearchFeature(ABC):
+class ResearchFeature:
     def __init__(
         self,
         *,
@@ -32,7 +32,7 @@ class ResearchFeature(ABC):
         lookback_matches: int,
         dependencies: Sequence[str],
         feature_id: str | None = None,
-        tier: str = "CORE",
+        tier: str = "FUNDAMENTAL",
         status: str = "PLANNED",
         priority: int = 1,
         predictive_hypothesis: str = "",
@@ -72,9 +72,8 @@ class ResearchFeature(ABC):
         self.validation_status = validation_status
         self.selection_status = selection_status
 
-    @abstractmethod
     def compute(self) -> Any:
-        raise NotImplementedError
+        return None
 
 
 class MetadataFeature(ResearchFeature):
@@ -107,6 +106,9 @@ class FeatureRegistry:
 
         if feature.validation_status not in VALID_FEATURE_STATUSES:
             raise ValueError(f"Invalid validation_status '{feature.validation_status}'")
+
+        if feature.tier not in VALID_FEATURE_TIERS:
+            raise ValueError(f"Invalid tier '{feature.tier}'")
 
         if not feature.category.strip():
             raise ValueError("Feature requires a category")
@@ -229,7 +231,7 @@ def build_corner_feature_registry() -> FeatureRegistry:
             lookback_matches=3,
             dependencies=("team_history",),
             feature_id="CF-001",
-            tier="CORE",
+            tier="FUNDAMENTAL",
             status="VALIDATED",
             priority=1,
             predictive_hypothesis="Teams that create more corners recently are likelier to sustain that pattern.",
@@ -253,7 +255,7 @@ def build_corner_feature_registry() -> FeatureRegistry:
             lookback_matches=3,
             dependencies=("team_history",),
             feature_id="CF-002",
-            tier="CORE",
+            tier="FUNDAMENTAL",
             status="VALIDATED",
             priority=1,
             predictive_hypothesis="Teams that concede more corners recently are likelier to continue conceding them.",
@@ -277,7 +279,7 @@ def build_corner_feature_registry() -> FeatureRegistry:
             lookback_matches=3,
             dependencies=("team_history",),
             feature_id="CF-003",
-            tier="CORE",
+            tier="FUNDAMENTAL",
             status="VALIDATED",
             priority=2,
             predictive_hypothesis="Recent corner momentum can separate teams before kickoff.",
@@ -301,7 +303,7 @@ def build_corner_feature_registry() -> FeatureRegistry:
             lookback_matches=3,
             dependencies=("team_history",),
             feature_id="CF-004",
-            tier="CORE",
+            tier="FUNDAMENTAL",
             status="VALIDATED",
             priority=2,
             predictive_hypothesis="Sharp differences in recent corner pressure can foreshadow outcomes.",

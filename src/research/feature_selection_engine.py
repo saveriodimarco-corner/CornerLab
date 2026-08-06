@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,7 @@ class FeatureSelectionEngine:
         self.correlation_threshold = 0.85
         self.max_missing_ratio = 0.25
 
-    def evaluate(self, feature_dataframe: pd.DataFrame) -> List[Dict[str, Any]]:
+    def evaluate(self, feature_dataframe: pd.DataFrame, feature_registry: Optional[Any] = None) -> List[Dict[str, Any]]:
         if feature_dataframe.empty:
             return []
 
@@ -62,7 +62,11 @@ class FeatureSelectionEngine:
             if missing_ratio > self.max_missing_ratio or variance == 0.0 or constant_feature == "YES":
                 selection_status = "DROP"
             elif max_absolute_correlation >= self.correlation_threshold:
-                selection_status = "REVIEW"
+                tier = self._resolve_tier(feature_name, feature_registry)
+                if tier in {"FUNDAMENTAL", "CONTEXT", "MARKET"}:
+                    selection_status = "REVIEW"
+                else:
+                    selection_status = "DROP"
             else:
                 selection_status = "KEEP"
 
@@ -85,3 +89,18 @@ class FeatureSelectionEngine:
             )
 
         return results
+
+    def _resolve_tier(self, feature_name: str, feature_registry: Optional[Any]) -> str:
+        if feature_registry is None:
+            return "FUNDAMENTAL"
+
+        for feature in getattr(feature_registry, "as_dicts", lambda: [])():
+            if feature.get("name") == feature_name:
+                return str(feature.get("tier", "FUNDAMENTAL")).upper()
+
+        try:
+            registry_feature = feature_registry.get(feature_name)
+        except Exception:
+            return "FUNDAMENTAL"
+
+        return str(getattr(registry_feature, "tier", "FUNDAMENTAL")).upper()
