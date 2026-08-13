@@ -18,6 +18,7 @@ ENV_PATH = BASE_DIR / ".env"
 REPORT_PATH = BASE_DIR / "reports" / "paper_trading_current.csv"
 HISTORY_PATH = BASE_DIR / "data" / "paper_trading" / "run_history.jsonl"
 PREMATCH_STATUS_PATH = BASE_DIR / "reports" / "prematch_latest.json"
+PERFORMANCE_PATH = BASE_DIR / "reports" / "paper_trading_performance.json"
 
 UI_LABELS = {
 	"history": "Storico",
@@ -26,6 +27,8 @@ UI_LABELS = {
 	"system_health": "Stato sistema",
 	"odds_provider": "Provider quote",
 	"decision_filter": "Filtro decisione",
+	"competition": "Competizione",
+	"competition_status": "Stato competizione",
 	"side": "Esito",
 	"line": "Linea",
 	"fixture": "Partita",
@@ -39,6 +42,14 @@ UI_LABELS = {
 	"confidence": "Affidabilità",
 	"recommended_stake": "Puntata consigliata",
 	"decision": "Decisione",
+	"performance": "Performance",
+	"bets": "Scommesse",
+	"profit_loss": "Profitto/Perdita",
+	"roi": "ROI",
+	"yield": "Yield",
+	"hit_rate": "Hit Rate",
+	"max_drawdown": "Drawdown massimo",
+	"bankroll": "Bankroll",
 }
 
 NO_PLAY_MESSAGE = "Nessuna giocata consigliata al momento."
@@ -62,6 +73,12 @@ SIDE_FILTER_OPTIONS = {
 	"TUTTI": "ALL",
 	"Over": "OVER",
 	"Under": "UNDER",
+}
+
+COMPETITION_FILTER_OPTIONS = {
+	"Tutte": "ALL",
+	"Serie A": "Serie A",
+	"Premier League": "Premier League",
 }
 
 LINE_FILTER_OPTIONS = {
@@ -92,6 +109,8 @@ DEFAULT_PLAY_POLICY_THRESHOLDS = {
 	"minimum_ev": 0.05,
 	"accept_threshold": 75.0,
 }
+
+COMPETITION_STATUS_ORDER = ["Serie A", "Premier League"]
 
 
 def _autoload_env(env_path: Path | None = None) -> bool:
@@ -141,6 +160,15 @@ def _read_prematch_status(path: Path) -> dict[str, Any]:
 		return {}
 
 
+def _read_performance_snapshot(path: Path) -> dict[str, Any]:
+	if not path.exists():
+		return {}
+	try:
+		return json.loads(path.read_text(encoding="utf-8"))
+	except json.JSONDecodeError:
+		return {}
+
+
 def _decision_order(value: str) -> int:
 	order = {
 		"PLAY": 0,
@@ -153,6 +181,23 @@ def _decision_order(value: str) -> int:
 
 def _decision_display(value: str) -> str:
 	return DECISION_DISPLAY_MAP.get(str(value), str(value))
+
+
+def _competition_support_states(frame: pd.DataFrame) -> dict[str, str]:
+	states = {competition: "IN PREPARAZIONE" for competition in COMPETITION_STATUS_ORDER}
+	if frame.empty or "competition" not in frame.columns:
+		return states
+	for competition in COMPETITION_STATUS_ORDER:
+		rows = frame.loc[frame["competition"].astype(str) == competition]
+		if rows.empty:
+			continue
+		if "market_support_status" in rows.columns and (rows["market_support_status"].astype(str) == "SUPPORTED").any():
+			states[competition] = "OPERATIVO"
+		elif "decision" in rows.columns and (rows["decision"].astype(str) != "MODEL_UNAVAILABLE").any():
+			states[competition] = "PARZIALMENTE SUPPORTATO"
+		else:
+			states[competition] = "IN PREPARAZIONE"
+	return states
 
 
 def _load_play_policy_thresholds() -> dict[str, float]:
@@ -248,12 +293,15 @@ def _to_decimal(value: Any, digits: int = 2) -> str:
 	return f"{float(value):.{digits}f}"
 
 
-def _prepare_play_cards(frame: pd.DataFrame, side_filter: str, line_filter: str, quality_filter: str) -> list[dict[str, Any]]:
+def _prepare_play_cards(frame: pd.DataFrame, side_filter: str, line_filter: str, quality_filter: str, competition_filter: str = "Tutte") -> list[dict[str, Any]]:
 	if frame.empty:
 		return []
 
 	table = _add_play_quality(frame)
 	table = table.loc[table["decision"] == "PLAY"].copy()
+	competition_internal = COMPETITION_FILTER_OPTIONS.get(competition_filter, "ALL")
+	if competition_internal != "ALL" and "competition" in table.columns:
+		table = table.loc[table["competition"].astype(str) == competition_internal]
 	quality_internal = QUALITY_FILTER_OPTIONS.get(quality_filter, "ALL")
 	if quality_internal != "ALL":
 		table = table.loc[table["Qualità"] == quality_internal]
@@ -282,6 +330,7 @@ def _prepare_play_cards(frame: pd.DataFrame, side_filter: str, line_filter: str,
 		cards.append(
 			{
 				"partita": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
+				"competizione": row.get("competition", "-"),
 				"kickoff": row.get("kickoff_utc"),
 				"esito": str(row.get("side", "")).upper(),
 				"linea": str(row.get("line", "")),
@@ -313,6 +362,7 @@ def _render_play_cards(cards: list[dict[str, Any]]) -> None:
 			st.markdown("<div style='padding:0.25rem 0.5rem;background:#8a8a8a;color:white;border-radius:8px;display:inline-block;font-weight:600;'>MARGINALE</div>", unsafe_allow_html=True)
 
 		st.markdown(f"### {card['partita']}")
+		st.caption(f"{UI_LABELS['competition']}: {card.get('competizione') or '-'}")
 		st.caption(f"{UI_LABELS['kickoff']}: {card.get('kickoff') or '-'}")
 		st.markdown(f"**{card.get('esito', '-') } {card.get('linea', '-')}**")
 		st.markdown(f"{UI_LABELS['bookmaker']}: **{card.get('bookmaker') or '-'}**")
@@ -356,6 +406,7 @@ def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
 
 	desired_columns = [
 		"Qualità",
+		"competition",
 		"fixture",
 		"kickoff_utc",
 		"line",
@@ -376,6 +427,7 @@ def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
 	return table[present_columns].rename(
 		columns={
 			"Qualità": "Qualità",
+			"competition": UI_LABELS["competition"],
 			"fixture": UI_LABELS["fixture"],
 			"kickoff_utc": UI_LABELS["kickoff"],
 			"line": UI_LABELS["line"],
@@ -394,13 +446,16 @@ def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
 	)
 
 
-def _apply_filters(frame: pd.DataFrame, filter_mode: str, side_filter: str, line_filter: str, quality_filter: str) -> pd.DataFrame:
+def _apply_filters(frame: pd.DataFrame, filter_mode: str, side_filter: str, line_filter: str, quality_filter: str, competition_filter: str = "Tutte") -> pd.DataFrame:
 	if frame.empty:
 		return frame
 	table = _add_play_quality(frame)
 	decision_internal = DECISION_FILTER_OPTIONS.get(filter_mode, "ALL")
 	if decision_internal != "ALL":
 		table = table.loc[table["decision"] == decision_internal]
+	competition_internal = COMPETITION_FILTER_OPTIONS.get(competition_filter, "ALL")
+	if competition_internal != "ALL" and "competition" in table.columns:
+		table = table.loc[table["competition"].astype(str) == competition_internal]
 	quality_internal = QUALITY_FILTER_OPTIONS.get(quality_filter, "ALL")
 	if quality_internal != "ALL":
 		table = table.loc[table["Qualità"] == quality_internal]
@@ -428,6 +483,24 @@ def _render_dashboard() -> None:
 	col3.metric(UI_LABELS["system_health"], "OK" if health_ok else "CHECK")
 	col4.metric(UI_LABELS["odds_provider"], str(provider_status).upper())
 
+	performance_snapshot = _read_performance_snapshot(PERFORMANCE_PATH)
+	performance_summary = performance_snapshot.get("summary", {}) if isinstance(performance_snapshot, dict) else {}
+	with st.expander(UI_LABELS["performance"], expanded=False):
+		performance_col1, performance_col2, performance_col3 = st.columns(3)
+		performance_col1.metric(UI_LABELS["bets"], str(int(performance_summary.get("total_bets", 0))))
+		performance_col2.metric(UI_LABELS["profit_loss"], _to_decimal(performance_summary.get("profit_loss", 0.0)))
+		performance_col3.metric(UI_LABELS["roi"], _to_percentage(performance_summary.get("roi", 0.0), scale=100.0, signed=False, digits=1))
+		performance_col4, performance_col5, performance_col6 = st.columns(3)
+		performance_col4.metric(UI_LABELS["yield"], _to_percentage(performance_summary.get("yield", 0.0), scale=100.0, signed=False, digits=1))
+		performance_col5.metric(UI_LABELS["hit_rate"], _to_percentage(performance_summary.get("hit_rate", 0.0), scale=100.0, signed=False, digits=1))
+		performance_col6.metric(UI_LABELS["max_drawdown"], _to_percentage(performance_summary.get("max_drawdown", 0.0), scale=100.0, signed=False, digits=1))
+		performance_col7, performance_col8 = st.columns(2)
+		performance_col7.metric(UI_LABELS["bankroll"], _to_decimal(performance_summary.get("final_bankroll", performance_summary.get("bankroll_start", 100.0))))
+		average_clv = performance_summary.get("average_clv")
+		performance_col8.metric("CLV medio", _to_decimal(average_clv, digits=4) if average_clv is not None and not pd.isna(average_clv) else "-")
+		if not performance_snapshot:
+			st.caption("Nessun paper trade reale è ancora stato regolato.")
+
 	if "run_active" not in st.session_state:
 		st.session_state["run_active"] = False
 
@@ -451,21 +524,27 @@ def _render_dashboard() -> None:
 		st.info("Nessun report paper-trading disponibile. Esegui AGGIORNA PRE-PARTITA.")
 		return
 
-	filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+	competition_states = _competition_support_states(report)
+	state_col1, state_col2 = st.columns(2)
+	state_col1.metric("Serie A", competition_states.get("Serie A", "IN PREPARAZIONE"))
+	state_col2.metric("Serie B", competition_states.get("Serie B", "IN PREPARAZIONE"))
+
+	filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns(5)
 	filter_mode = filter_col1.selectbox(UI_LABELS["decision_filter"], list(DECISION_FILTER_OPTIONS.keys()), index=0)
-	side_filter = filter_col2.selectbox(UI_LABELS["side"], list(SIDE_FILTER_OPTIONS.keys()), index=0)
-	line_filter = filter_col3.selectbox(UI_LABELS["line"], list(LINE_FILTER_OPTIONS.keys()), index=0)
-	quality_filter = filter_col4.selectbox("Qualità", list(QUALITY_FILTER_OPTIONS.keys()), index=0)
+	competition_filter = filter_col2.selectbox(UI_LABELS["competition"], list(COMPETITION_FILTER_OPTIONS.keys()), index=0)
+	side_filter = filter_col3.selectbox(UI_LABELS["side"], list(SIDE_FILTER_OPTIONS.keys()), index=0)
+	line_filter = filter_col4.selectbox(UI_LABELS["line"], list(LINE_FILTER_OPTIONS.keys()), index=0)
+	quality_filter = filter_col5.selectbox("Qualità", list(QUALITY_FILTER_OPTIONS.keys()), index=0)
 	st.caption(QUALITY_INFO_TEXT)
 
-	play_cards = _prepare_play_cards(report, side_filter=side_filter, line_filter=line_filter, quality_filter=quality_filter)
+	play_cards = _prepare_play_cards(report, side_filter=side_filter, line_filter=line_filter, quality_filter=quality_filter, competition_filter=competition_filter)
 	if play_cards:
 		_render_play_cards(play_cards)
 	else:
 		st.info(NO_PLAY_MESSAGE)
 
 	with st.expander(FULL_VIEW_LABEL):
-		filtered = _apply_filters(report, filter_mode, side_filter, line_filter, quality_filter)
+		filtered = _apply_filters(report, filter_mode, side_filter, line_filter, quality_filter, competition_filter)
 		dashboard_table = _prepare_dashboard_table(filtered)
 		st.dataframe(dashboard_table, use_container_width=True, hide_index=True)
 

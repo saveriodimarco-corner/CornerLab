@@ -1,0 +1,222 @@
+{
+  "timestamp": "2026-08-13T20:36:09Z",
+  "git_commit": "290acf2d6020e3da621c55d8b0aa748c43511379",
+  "model_artifacts": [
+    {
+      "target_name": "over_9_5",
+      "competition": "Serie A",
+      "market_side": "OVER",
+      "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+      "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
+      "model_name": "negative_binomial_probability",
+      "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
+    },
+    {
+      "target_name": "over_10_5",
+      "competition": "Serie A",
+      "market_side": "OVER",
+      "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+      "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
+      "model_name": "negative_binomial_probability",
+      "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
+    }
+  ],
+  "feature_schema_hashes": {
+    "over_9_5": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61",
+    "over_10_5": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
+  },
+  "supported_targets": [
+    "over_9_5",
+    "under_9_5",
+    "over_10_5",
+    "under_10_5"
+  ],
+  "unsupported_targets": [
+    "over_8_5",
+    "under_8_5",
+    "over_11_5",
+    "under_11_5"
+  ],
+  "supported_market_registry": {
+    "Serie A": {
+      "status": "OPERATIVO",
+      "supported_targets": [
+        "over_9_5",
+        "under_9_5",
+        "over_10_5",
+        "under_10_5"
+      ],
+      "unsupported_targets": [
+        "over_8_5",
+        "under_8_5",
+        "over_11_5",
+        "under_11_5"
+      ],
+      "model_registry": {
+        "over_9_5": {
+          "target_name": "over_9_5",
+          "competition": "Serie A",
+          "market_side": "OVER",
+          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+          "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
+          "model_name": "negative_binomial_probability",
+          "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
+        },
+        "under_9_5": {
+          "target_name": "under_9_5",
+          "competition": "Serie A",
+          "market_side": "UNDER",
+          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+          "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
+          "model_name": "negative_binomial_probability",
+          "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
+        },
+        "over_10_5": {
+          "target_name": "over_10_5",
+          "competition": "Serie A",
+          "market_side": "OVER",
+          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+          "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
+          "model_name": "negative_binomial_probability",
+          "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
+        },
+        "under_10_5": {
+          "target_name": "under_10_5",
+          "competition": "Serie A",
+          "market_side": "UNDER",
+          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+          "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
+          "model_name": "negative_binomial_probability",
+          "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
+        }
+      }
+    },
+    "Premier League": {
+      "status": "IN PREPARAZIONE",
+      "supported_targets": [],
+      "unsupported_targets": [
+        "over_8_5",
+        "under_8_5",
+        "over_9_5",
+        "under_9_5",
+        "over_10_5",
+        "under_10_5",
+        "over_11_5",
+        "under_11_5"
+      ]
+    }
+  },
+  "decision_thresholds": {
+    "minimum_probability": 0.6,
+    "minimum_confidence": 60.0,
+    "minimum_ev": 0.05,
+    "accept_threshold": 69.32447766749223
+  },
+  "staking_config": {
+    "kelly_cap": 0.2,
+    "minimum_odds": 1.5,
+    "bankroll_start": 100.0
+  },
+  "betting_policy_thresholds": {
+    "minimum_ev": 0.05,
+    "minimum_confidence": 60.0,
+    "minimum_probability": 0.6,
+    "minimum_odds": 1.5
+  },
+  "current_paper_trading_schema": {
+    "columns": [
+      "match_id",
+      "market",
+      "closing_odds",
+      "predicted_probability",
+      "model_confidence",
+      "fair_odds",
+      "market_edge",
+      "ev",
+      "kelly_fraction",
+      "half_kelly",
+      "recommended_stake",
+      "decision_confidence_score",
+      "decision",
+      "row_order",
+      "paper_trade_row_id",
+      "fixture_id",
+      "provider_fixture_id",
+      "kickoff_utc",
+      "season",
+      "competition",
+      "date",
+      "home_team",
+      "away_team",
+      "bookmaker",
+      "line",
+      "side",
+      "target_name",
+      "market_support_status",
+      "scoring_status",
+      "source",
+      "source_fixture_id",
+      "provider_event_id",
+      "raw_response_hash",
+      "snapshot_timestamp",
+      "minutes_to_kickoff",
+      "opening_odds",
+      "confidence_score",
+      "decision_state",
+      "predicted_total_corners",
+      "data_quality_score",
+      "insufficient_history",
+      "home_matches_played",
+      "away_matches_played",
+      "combined_volatility",
+      "model_artifact",
+      "model_hash",
+      "feature_schema_hash",
+      "feature_vector_version",
+      "prediction_timestamp",
+      "model_version",
+      "decision_reason",
+      "stake",
+      "market_implied_probability",
+      "edge",
+      "run_id"
+    ],
+    "schema_hash": "73ab61dba8e0a4b22e4d980f0fca03b15cf096c736ebaab8b30ca5c2f2b9faaa"
+  },
+  "current_paper_trading_schema_hash": "73ab61dba8e0a4b22e4d980f0fca03b15cf096c736ebaab8b30ca5c2f2b9faaa",
+  "live_configuration": {
+    "calibration_method": {
+      "over_10_5": "platt",
+      "over_11_5": "isotonic",
+      "over_8_5": "isotonic",
+      "over_9_5": "platt"
+    },
+    "decision_thresholds": {
+      "minimum_probability": 0.6,
+      "minimum_confidence": 60.0,
+      "minimum_ev": 0.05,
+      "kelly_cap": 0.2,
+      "abstention_threshold": 50.0
+    },
+    "confidence_policy": {
+      "accept_threshold": 69.32447766749223,
+      "watch_threshold": 59.33682827181903
+    }
+  },
+  "current_best_models": {
+    "over_9_5": {
+      "accepted": true,
+      "model_name": "negative_binomial_probability",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.2430266375860774,
+      "baseline_metric_value": 0.24675207756232687
+    },
+    "over_10_5": {
+      "accepted": true,
+      "model_name": "negative_binomial_probability",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.20898329597982607,
+      "baseline_metric_value": 0.2126038781163435
+    }
+  }
+}

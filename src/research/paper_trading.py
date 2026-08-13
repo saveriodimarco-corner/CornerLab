@@ -30,6 +30,12 @@ LINE_TO_PROBABILITY_COLUMN = {
 
 SUPPORTED_DECISIONS = {"PLAY", "NO BET", "LOW CONFIDENCE"}
 
+SCHEMA_STABLE_COLUMNS = {
+    "market_implied_probability": np.nan,
+    "edge": np.nan,
+    "stake": np.nan,
+}
+
 MARKET_LINE_TO_TARGET_NAME = {
     "8.5": "over_8_5",
     "9.5": "over_9_5",
@@ -37,9 +43,10 @@ MARKET_LINE_TO_TARGET_NAME = {
     "11.5": "over_11_5",
 }
 
-VALIDATED_MODEL_TARGETS = {
-    "over_9_5": "negative_binomial_probability",
-    "over_10_5": "negative_binomial_probability",
+COMPETITION_SLUGS = {
+    "serie a": "serie_a",
+    "serie b": "serie_b",
+    "premier league": "premier_league",
 }
 
 SYNTHETIC_OUTCOME_COLUMNS = {
@@ -59,6 +66,7 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
     base_dir = Path(base_dir or Path(__file__).resolve().parents[2])
     output_dir = Path(output_dir or base_dir)
 
+    decision_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     historical_matches = _load_historical_matches(base_dir)
     fixtures, odds = _load_live_fixtures_and_odds(base_dir)
     validated_frames: list[pd.DataFrame] = []
@@ -101,8 +109,29 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
             1.0 / scored_report["closing_odds"],
             np.nan,
         )
+        scored_report["odds_at_decision"] = np.where(
+            scored_report["opening_odds"].notna() & (scored_report["opening_odds"] > 0.0),
+            scored_report["opening_odds"],
+            scored_report["closing_odds"],
+        )
+        scored_report["implied_probability_at_decision"] = np.where(
+            scored_report["odds_at_decision"].notna() & (scored_report["odds_at_decision"] > 0.0),
+            1.0 / scored_report["odds_at_decision"],
+            np.nan,
+        )
+        scored_report["closing_implied_probability"] = np.where(
+            scored_report["closing_odds"].notna() & (scored_report["closing_odds"] > 0.0),
+            1.0 / scored_report["closing_odds"],
+            np.nan,
+        )
+        scored_report["CLV"] = scored_report["closing_implied_probability"] - scored_report["implied_probability_at_decision"]
         scored_report["edge"] = scored_report["predicted_probability"] - scored_report["market_implied_probability"]
         scored_report["stake"] = scored_report.get("recommended_stake", np.nan)
+        scored_report["quality_tier"] = _assign_quality_tier(scored_report)
+        scored_report["confidence"] = scored_report["decision_confidence_score"]
+        scored_report["EV"] = scored_report["ev"]
+        scored_report["decision_timestamp"] = decision_timestamp
+        scored_report["kickoff"] = scored_report.get("kickoff_utc")
         scored_report["decision_reason"] = np.where(
             scored_report["decision"] == "LOW CONFIDENCE",
             "CONFIDENCE_BELOW_THRESHOLD",
@@ -111,6 +140,10 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
 
     report = pd.concat([scored_report, unavailable_rows], ignore_index=True, sort=False)
     report = report.sort_values("row_order", kind="stable").reset_index(drop=True)
+    for column_name, default_value in SCHEMA_STABLE_COLUMNS.items():
+        if column_name not in report.columns:
+            report[column_name] = default_value
+    _ensure_observation_columns(report, decision_timestamp=decision_timestamp)
 
     run_id = f"prematch-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid4().hex[:8]}"
     report["run_id"] = run_id
@@ -191,31 +224,65 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
 
 
 def _load_authoritative_models(base_dir: Path) -> dict[str, dict[str, Any]]:
-    manifest_path = base_dir / "data" / "research" / "best_models.json"
-    if not manifest_path.exists():
-        raise FileNotFoundError(f"Best-model manifest not found: {manifest_path}")
-
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifests = _load_model_manifests(base_dir)
     bundles: dict[str, dict[str, Any]] = {}
-    for target_name in MARKET_LINE_TO_TARGET_NAME.values():
-        info = manifest.get(target_name)
-        if not info or not bool(info.get("accepted")) or str(info.get("model_name", "")).endswith("baseline"):
-            continue
-        model_name = str(info.get("model_name"))
-        artifact_path = base_dir / "models" / "research" / f"{target_name}_{model_name}.pkl"
-        if not artifact_path.exists():
-            raise FileNotFoundError(f"Validated trained artifact is missing: {artifact_path}")
-        blob = artifact_path.read_bytes()
-        model = pickle.loads(blob)
-        bundles[target_name] = {
-            "artifact_path": artifact_path,
-            "artifact_hash": hashlib.sha256(blob).hexdigest(),
-            "model": model,
-            "schema": _extract_model_schema(model),
-            "model_version": info.get("model_name"),
+    for competition_slug, manifest in manifests.items():
+        for target_name in MARKET_LINE_TO_TARGET_NAME.values():
+            info = manifest.get(target_name)
+            if not info or not bool(info.get("accepted")) or str(info.get("model_name", "")).endswith("baseline"):
+                continue
+            model_name = str(info.get("model_name"))
+            artifact_path = _resolve_model_artifact_path(base_dir, competition_slug, target_name, model_name)
+            if not artifact_path.exists():
+                raise FileNotFoundError(f"Validated trained artifact is missing: {artifact_path}")
+            blob = artifact_path.read_bytes()
+            model = pickle.loads(blob)
+            bundles[_model_registry_key(competition_slug, target_name)] = {
+                "artifact_path": artifact_path,
+                "artifact_hash": hashlib.sha256(blob).hexdigest(),
+                "model": model,
+                "schema": _extract_model_schema(model),
+                "model_version": info.get("model_name"),
                 "target_name": target_name,
-        }
+                "competition": competition_slug,
+            }
     return bundles
+
+
+def _load_model_manifests(base_dir: Path) -> dict[str, dict[str, Any]]:
+    research_dir = base_dir / "data" / "research"
+    manifests: dict[str, dict[str, Any]] = {}
+    default_path = research_dir / "best_models.json"
+    if default_path.exists():
+        manifests["serie_a"] = json.loads(default_path.read_text(encoding="utf-8"))
+    for competition_slug in COMPETITION_SLUGS.values():
+        competition_path = research_dir / f"best_models_{competition_slug}.json"
+        if competition_path.exists():
+            manifests[competition_slug] = json.loads(competition_path.read_text(encoding="utf-8"))
+    if not manifests:
+        raise FileNotFoundError(f"Best-model manifest not found under: {research_dir}")
+    return manifests
+
+
+def _resolve_model_artifact_path(base_dir: Path, competition_slug: str, target_name: str, model_name: str) -> Path:
+    models_dir = base_dir / "models" / "research"
+    if competition_slug == "serie_a":
+        candidates = [
+            models_dir / f"{competition_slug}_{target_name}_{model_name}.pkl",
+            models_dir / f"{target_name}_{model_name}.pkl",
+        ]
+    else:
+        candidates = [models_dir / f"{competition_slug}_{target_name}_{model_name}.pkl"]
+    return next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+
+
+def _competition_slug(value: Any) -> str:
+    lowered = str(value or "Serie A").strip().lower()
+    return COMPETITION_SLUGS.get(lowered, lowered.replace(" ", "_"))
+
+
+def _model_registry_key(competition_slug: str, target_name: str) -> str:
+    return f"{competition_slug}/{target_name}"
 
 
 def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -254,7 +321,21 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
             combined_matches.to_parquet(combined_path, index=False)
             advanced_features = build_advanced_feature_dataset(base_dir=temp_dir, output_dir=temp_dir)
 
-        live_feature_row = advanced_features.loc[advanced_features["match_id"].astype(int) == int(fixture["fixture_id"])]
+        fixture_id = int(fixture["fixture_id"])
+        fixture_competition = str(fixture.get("competition", "Serie A"))
+        fixture_home = str(fixture.get("home_team", ""))
+        fixture_away = str(fixture.get("away_team", ""))
+        fixture_date = pd.to_datetime(fixture["kickoff_utc"], utc=True, errors="coerce").strftime("%Y-%m-%d")
+
+        # Match the injected live fixture deterministically to avoid cross-league
+        # fixture_id collisions with historical rows.
+        live_feature_row = advanced_features.loc[
+            (advanced_features["match_id"].astype(int) == fixture_id)
+            & (advanced_features["competition"].astype(str) == fixture_competition)
+            & (advanced_features["home_team"].astype(str) == fixture_home)
+            & (advanced_features["away_team"].astype(str) == fixture_away)
+            & (advanced_features["date"].astype(str) == fixture_date)
+        ]
         if live_feature_row.empty:
             continue
         live_rows.append(live_feature_row.iloc[[0]].copy())
@@ -283,7 +364,9 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
 
     history = historical_matches.copy()
     history["date"] = pd.to_datetime(history["date"], errors="coerce")
-    history = history.sort_values(["date", "season", "fixture_id"]).reset_index(drop=True)
+    if "competition" not in history.columns:
+        history["competition"] = "Serie A"
+    history = history.sort_values(["competition", "date", "season", "fixture_id"]).reset_index(drop=True)
     for _, match in history.iterrows():
         feature_store._create_feature_row(  # type: ignore[attr-defined]
             match,
@@ -292,6 +375,7 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
             team_history=team_history,
             league_state=league_state,
             season=str(match.get("season", "")),
+            competition=str(match.get("competition", "Serie A")),
         )
         feature_store._update_state(  # type: ignore[attr-defined]
             prior_state,
@@ -299,6 +383,7 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
             match,
             league_state=league_state,
             season=str(match.get("season", "")),
+            competition=str(match.get("competition", "Serie A")),
         )
 
     feature_rows: list[dict[str, Any]] = []
@@ -317,6 +402,7 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
                 "fixture_id": int(fixture["fixture_id"]),
                 "date": kickoff.strftime("%Y-%m-%d"),
                 "season": str(fixture.get("season", "")),
+                "competition": str(fixture.get("competition", "Serie A")),
                 "home_team": fixture.get("home_team"),
                 "away_team": fixture.get("away_team"),
                 "home_corners": 0.0,
@@ -331,6 +417,7 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
             team_history=team_history,
             league_state=league_state,
             season=str(fixture.get("season", "")),
+            competition=str(fixture.get("competition", "Serie A")),
         )
 
         home_team = str(fixture.get("home_team", ""))
@@ -346,6 +433,7 @@ def build_live_fixture_features(historical_matches: pd.DataFrame, fixtures: pd.D
             "fixture_id": int(fixture["fixture_id"]),
             "provider_fixture_id": fixture.get("provider_fixture_id"),
             "kickoff_utc": kickoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "competition": str(fixture.get("competition", "Serie A")),
             "season": str(fixture.get("season", "")),
             "date": kickoff.strftime("%Y-%m-%d"),
             "home_team": home_team,
@@ -425,11 +513,13 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="UNSUPPORTED_MARKET", row_order=row_order, target_name=None))
             continue
 
-        if target_name not in model_bundle:
+        competition_slug = _competition_slug(fixture_row.get("competition", "Serie A"))
+        registry_key = _model_registry_key(competition_slug, target_name)
+        if registry_key not in model_bundle:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="NO_ACCEPTED_MODEL", row_order=row_order, target_name=target_name))
             continue
 
-        bundle = model_bundle[target_name]
+        bundle = model_bundle[registry_key]
         live_feature_frame = pd.DataFrame([feature_row_to_model_input(fixture_row, target_name)])
         expected_features = bundle["schema"]
         if not expected_features:
@@ -458,6 +548,7 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
                 "provider_fixture_id": fixture_row.get("provider_fixture_id"),
                 "kickoff_utc": fixture_row.get("kickoff_utc"),
                 "season": fixture_row.get("season"),
+                "competition": fixture_row.get("competition", "Serie A"),
                 "date": fixture_row.get("date"),
                 "home_team": fixture_row.get("home_team"),
                 "away_team": fixture_row.get("away_team"),
@@ -569,6 +660,7 @@ def _build_unavailable_row(
         "provider_fixture_id": fixture_row.get("provider_fixture_id"),
         "kickoff_utc": fixture_row.get("kickoff_utc"),
         "season": fixture_row.get("season"),
+        "competition": fixture_row.get("competition", "Serie A"),
         "date": fixture_row.get("date"),
         "home_team": fixture_row.get("home_team"),
         "away_team": fixture_row.get("away_team"),
@@ -619,6 +711,70 @@ def _append_run_history(history_path: Path, entry: dict[str, Any]) -> None:
         handle.write(json.dumps(entry) + "\n")
 
 
+def _ensure_observation_columns(report: pd.DataFrame, decision_timestamp: str) -> None:
+    if report.empty:
+        return
+    if "decision_timestamp" not in report.columns:
+        report["decision_timestamp"] = decision_timestamp
+    else:
+        report["decision_timestamp"] = report["decision_timestamp"].fillna(decision_timestamp)
+    if "kickoff" not in report.columns and "kickoff_utc" in report.columns:
+        report["kickoff"] = report["kickoff_utc"]
+    if "odds_at_decision" not in report.columns:
+        opening = report.get("opening_odds", pd.Series(index=report.index, dtype=float))
+        closing = report.get("closing_odds", pd.Series(index=report.index, dtype=float))
+        report["odds_at_decision"] = np.where(opening.notna() & (opening > 0.0), opening, closing)
+    if "implied_probability_at_decision" not in report.columns:
+        report["implied_probability_at_decision"] = np.where(
+            report["odds_at_decision"].notna() & (report["odds_at_decision"] > 0.0),
+            1.0 / report["odds_at_decision"],
+            np.nan,
+        )
+    if "closing_implied_probability" not in report.columns:
+        closing = report.get("closing_odds", pd.Series(index=report.index, dtype=float))
+        report["closing_implied_probability"] = np.where(
+            closing.notna() & (closing > 0.0),
+            1.0 / closing,
+            np.nan,
+        )
+    if "CLV" not in report.columns:
+        report["CLV"] = report["closing_implied_probability"] - report["implied_probability_at_decision"]
+    if "quality_tier" not in report.columns:
+        report["quality_tier"] = "-"
+    if "confidence" not in report.columns:
+        report["confidence"] = report.get("decision_confidence_score", np.nan)
+    if "EV" not in report.columns:
+        report["EV"] = report.get("ev", np.nan)
+
+
+def _assign_quality_tier(report: pd.DataFrame) -> pd.Series:
+    quality = pd.Series(index=report.index, data="-", dtype=object)
+    play_mask = report["decision"].astype(str) == "PLAY"
+    play = report.loc[play_mask].copy()
+    if play.empty:
+        return quality
+    ev_series = pd.to_numeric(play.get("ev", pd.Series(index=play.index, dtype=float)), errors="coerce")
+    confidence_series = pd.to_numeric(play.get("decision_confidence_score", pd.Series(index=play.index, dtype=float)), errors="coerce")
+    ev_rank = ev_series.rank(method="dense", pct=True)
+    confidence_rank = confidence_series.rank(method="dense", pct=True)
+    combined_score = 0.7 * ev_rank + 0.3 * confidence_rank
+    combined_score = combined_score.fillna(0.0)
+    top_threshold = float(combined_score.quantile(2.0 / 3.0))
+    good_threshold = float(combined_score.quantile(1.0 / 3.0))
+    confidence_median = float(confidence_series.median()) if confidence_series.notna().any() else np.nan
+    is_top_relative = combined_score >= top_threshold
+    is_good_relative = combined_score >= good_threshold
+    is_top_conf_ok = (confidence_series >= confidence_median) if np.isfinite(confidence_median) else pd.Series(False, index=play.index)
+    play_quality = pd.Series(index=play.index, data="MARGINALE", dtype=object)
+    play_quality.loc[is_good_relative] = "BUONA"
+    if len(play) < 6:
+        play_quality.loc[is_top_relative & is_top_conf_ok & (confidence_series >= 69.32447766749223)] = "TOP"
+    else:
+        play_quality.loc[is_top_relative & is_top_conf_ok] = "TOP"
+    quality.loc[play_mask] = play_quality
+    return quality
+
+
 def _validate_over_under_complement(report: pd.DataFrame, tolerance: float = 1e-9) -> list[str]:
     warnings: list[str] = []
     if report.empty:
@@ -644,13 +800,22 @@ def _validate_over_under_complement(report: pd.DataFrame, tolerance: float = 1e-
 
 
 def _load_historical_matches(base_dir: Path) -> pd.DataFrame:
-    matches_path = base_dir / "data" / "raw" / "serie_a_matches.csv"
-    if not matches_path.exists():
-        raise FileNotFoundError(f"Historical match source not found: {matches_path}")
-    matches = pd.read_csv(matches_path)
-    if matches.empty:
+    raw_dir = base_dir / "data" / "raw"
+    paths = sorted(raw_dir.glob("*_matches.csv"))
+    if not paths:
+        raise FileNotFoundError(f"Historical match source not found under: {raw_dir}")
+    frames: list[pd.DataFrame] = []
+    for path in paths:
+        frame = pd.read_csv(path)
+        if frame.empty:
+            continue
+        if "competition" not in frame.columns:
+            frame = frame.copy()
+            frame["competition"] = "Serie B" if "serie_b" in path.stem.lower() else "Serie A"
+        frames.append(frame)
+    if not frames:
         raise ValueError("Historical match source is empty")
-    return matches
+    return pd.concat(frames, ignore_index=True)
 
 
 def _load_live_fixtures_and_odds(base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:

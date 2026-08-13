@@ -38,6 +38,16 @@ class _FakeAdapter:
                 "away_team": "Roma",
                 "status": "NS",
                 "provider": "api-football",
+            },
+            {
+                "provider_fixture_id": "fix-2",
+                "competition": "Premier League",
+                "season": "2026",
+                "kickoff_utc": "2026-08-26T18:45:00Z",
+                "home_team": "Arsenal",
+                "away_team": "Chelsea",
+                "status": "NS",
+                "provider": "api-football",
             }
         ]
 
@@ -50,7 +60,7 @@ class _FakeAdapter:
                 "line": "9.5",
                 "side": "OVER",
                 "odd": 2.0,
-                "source_fixture_id": "evt-1",
+                "source_fixture_id": f"evt-{fixture_id}",
             }
         ]
 
@@ -60,17 +70,27 @@ class _FakeRepo:
         self.config = config
 
 
+def _fake_manifest(**_):
+    return {"git_commit": "abc123", "supported_targets": ["over_9_5", "under_9_5", "over_10_5", "under_10_5"]}
+
+
+def _fake_settlement(**_):
+    return {"summary": {"total_bets": 0, "profit_loss": 0.0, "roi": 0.0, "yield": 0.0, "hit_rate": 0.0, "max_drawdown": 0.0, "final_bankroll": 100.0, "bankroll_start": 100.0}, "checkpoints": {}}
+
+
 def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(prematch_runner, "run_health_check", lambda **_: {"ok": True})
     monkeypatch.setattr(prematch_runner, "CollectorRepository", _FakeRepo)
     monkeypatch.setattr(prematch_runner, "FixtureCollector", _FakeFixtureCollector)
     monkeypatch.setattr(prematch_runner, "OddsCollector", _FakeOddsCollector)
     monkeypatch.setattr(prematch_runner, "LiveProviderAdapter", _FakeAdapter)
+    monkeypatch.setattr(prematch_runner, "build_production_baseline_manifest", _fake_manifest)
+    monkeypatch.setattr(prematch_runner, "settle_paper_trades", _fake_settlement)
     monkeypatch.setattr(
         prematch_runner,
         "run_paper_trading",
         lambda **_: {
-            "summary": {"run_id": "prematch-test", "fixtures": 1, "total_odds_rows": 1},
+            "summary": {"run_id": "prematch-test", "fixtures": 2, "total_odds_rows": 2},
             "output_paths": {
                 "csv": tmp_path / "reports" / "paper_trading_current.csv",
                 "parquet": tmp_path / "data" / "paper_trading" / "paper_trades_current.parquet",
@@ -83,7 +103,8 @@ def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypat
     result = prematch_runner.run_prematch(base_dir=tmp_path, output_dir=tmp_path, bankroll=100.0)
 
     assert result["health_ok"] is True
-    assert result["collector"]["fixtures_fetched"] == 1
-    assert result["collector"]["odds_downloaded"] == 1
+    assert result["collector"]["fixtures_fetched"] == 2
+    assert result["collector"]["odds_downloaded"] == 2
     assert result["paper_trading"]["run_id"] == "prematch-test"
+    assert result["production_baseline"]["git_commit"] == "abc123"
     assert (tmp_path / "reports" / "prematch_latest.json").exists()
