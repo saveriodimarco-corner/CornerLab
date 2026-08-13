@@ -8,14 +8,26 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from src.operations.prematch_runner import run_prematch
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+ENV_PATH = BASE_DIR / ".env"
 REPORT_PATH = BASE_DIR / "reports" / "paper_trading_current.csv"
 HISTORY_PATH = BASE_DIR / "data" / "paper_trading" / "run_history.jsonl"
 PREMATCH_STATUS_PATH = BASE_DIR / "reports" / "prematch_latest.json"
+
+
+def _autoload_env(env_path: Path | None = None) -> bool:
+	target = env_path or ENV_PATH
+	if not target.exists():
+		return False
+	return bool(load_dotenv(target, override=False))
+
+
+_autoload_env()
 
 
 def _load_history_rows(history_path: Path) -> list[dict[str, Any]]:

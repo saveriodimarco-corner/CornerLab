@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pandas as pd
 
-from src.ui.app import _apply_filters, _prepare_dashboard_table, _verify_login
+from src.ui.app import _apply_filters, _autoload_env, _prepare_dashboard_table, _verify_login
 
 
 def test_verify_login_uses_environment_password(monkeypatch) -> None:
@@ -57,3 +58,29 @@ def test_apply_filters_supports_side_and_line_filters() -> None:
 
     line_only = _apply_filters(frame, "ALL", "ALL", "9.5")
     assert len(line_only) == 1
+
+
+def test_autoload_env_reads_password_from_env_file(tmp_path: Path, monkeypatch, capsys) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("CORNERLAB_APP_PASSWORD=file-secret\n", encoding="utf-8")
+    monkeypatch.delenv("CORNERLAB_APP_PASSWORD", raising=False)
+
+    loaded = _autoload_env(env_file)
+
+    assert loaded is True
+    assert _verify_login("file-secret") is True
+    captured = capsys.readouterr()
+    assert "file-secret" not in captured.out
+    assert "file-secret" not in captured.err
+
+
+def test_autoload_env_does_not_override_existing_environment(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("CORNERLAB_APP_PASSWORD=file-secret\n", encoding="utf-8")
+    monkeypatch.setenv("CORNERLAB_APP_PASSWORD", "env-secret")
+
+    loaded = _autoload_env(env_file)
+
+    assert loaded is True
+    assert _verify_login("env-secret") is True
+    assert _verify_login("file-secret") is False
