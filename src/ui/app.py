@@ -19,6 +19,80 @@ REPORT_PATH = BASE_DIR / "reports" / "paper_trading_current.csv"
 HISTORY_PATH = BASE_DIR / "data" / "paper_trading" / "run_history.jsonl"
 PREMATCH_STATUS_PATH = BASE_DIR / "reports" / "prematch_latest.json"
 
+UI_LABELS = {
+	"history": "Storico",
+	"update_prematch": "AGGIORNA PRE-PARTITA",
+	"last_update": "Ultimo aggiornamento",
+	"system_health": "Stato sistema",
+	"odds_provider": "Provider quote",
+	"decision_filter": "Filtro decisione",
+	"side": "Esito",
+	"line": "Linea",
+	"fixture": "Partita",
+	"kickoff": "Calcio d’inizio",
+	"bookmaker": "Bookmaker",
+	"odds": "Quota",
+	"model_probability": "Probabilità modello",
+	"fair_odds": "Quota equa",
+	"market_implied_probability": "Probabilità implicita",
+	"edge": "Vantaggio",
+	"confidence": "Affidabilità",
+	"recommended_stake": "Puntata consigliata",
+	"decision": "Decisione",
+}
+
+NO_PLAY_MESSAGE = "Nessuna giocata consigliata al momento."
+FULL_VIEW_LABEL = "Vista completa"
+
+DEFAULT_DECISION_FILTER = "SOLO GIOCA"
+
+DECISION_DISPLAY_MAP = {
+	"PLAY": "GIOCA",
+	"NO BET": "NON GIOCARE",
+	"LOW CONFIDENCE": "BASSA AFFIDABILITÀ",
+	"MODEL_UNAVAILABLE": "MODELLO NON DISPONIBILE",
+}
+
+DECISION_FILTER_OPTIONS = {
+	"SOLO GIOCA": "PLAY",
+	"TUTTI": "ALL",
+}
+
+SIDE_FILTER_OPTIONS = {
+	"TUTTI": "ALL",
+	"Over": "OVER",
+	"Under": "UNDER",
+}
+
+LINE_FILTER_OPTIONS = {
+	"TUTTE": "ALL",
+	"8.5": "8.5",
+	"9.5": "9.5",
+	"10.5": "10.5",
+	"11.5": "11.5",
+}
+
+QUALITY_FILTER_OPTIONS = {
+	"TUTTE": "ALL",
+	"TOP": "TOP",
+	"BUONA": "BUONA",
+	"MARGINALE": "MARGINALE",
+}
+
+QUALITY_INFO_TEXT = "Qualità indica la forza relativa del segnale tra le giocate già approvate da CornerLab. TOP non significa giocata certa."
+
+QUALITY_RELATIVE_WEIGHTS = {
+	"ev": 0.7,
+	"confidence": 0.3,
+}
+
+DEFAULT_PLAY_POLICY_THRESHOLDS = {
+	"minimum_probability": 0.60,
+	"minimum_confidence": 60.0,
+	"minimum_ev": 0.05,
+	"accept_threshold": 75.0,
+}
+
 
 def _autoload_env(env_path: Path | None = None) -> bool:
 	target = env_path or ENV_PATH
@@ -77,10 +151,197 @@ def _decision_order(value: str) -> int:
 	return order.get(str(value), 99)
 
 
-def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
+def _decision_display(value: str) -> str:
+	return DECISION_DISPLAY_MAP.get(str(value), str(value))
+
+
+def _load_play_policy_thresholds() -> dict[str, float]:
+	thresholds = DEFAULT_PLAY_POLICY_THRESHOLDS.copy()
+
+	recommended_path = BASE_DIR / "recommended_live_configuration.json"
+	if recommended_path.exists():
+		try:
+			payload = json.loads(recommended_path.read_text(encoding="utf-8"))
+			decision = payload.get("decision_thresholds", {})
+			confidence_policy = payload.get("confidence_policy", {})
+			if "minimum_probability" in decision:
+				thresholds["minimum_probability"] = float(decision["minimum_probability"])
+			if "minimum_confidence" in decision:
+				thresholds["minimum_confidence"] = float(decision["minimum_confidence"])
+			if "minimum_ev" in decision:
+				thresholds["minimum_ev"] = float(decision["minimum_ev"])
+			if "accept_threshold" in confidence_policy:
+				thresholds["accept_threshold"] = float(confidence_policy["accept_threshold"])
+		except (json.JSONDecodeError, OSError, ValueError, TypeError):
+			pass
+
+	policy_path = BASE_DIR / "reports" / "betting_policy.json"
+	if policy_path.exists():
+		try:
+			payload = json.loads(policy_path.read_text(encoding="utf-8"))
+			policy_thresholds = payload.get("thresholds", {})
+			if "minimum_probability" in policy_thresholds:
+				thresholds["minimum_probability"] = float(policy_thresholds["minimum_probability"])
+			if "minimum_confidence" in policy_thresholds:
+				thresholds["minimum_confidence"] = float(policy_thresholds["minimum_confidence"])
+			if "minimum_ev" in policy_thresholds:
+				thresholds["minimum_ev"] = float(policy_thresholds["minimum_ev"])
+		except (json.JSONDecodeError, OSError, ValueError, TypeError):
+			pass
+
+	return thresholds
+
+
+def _add_play_quality(frame: pd.DataFrame) -> pd.DataFrame:
 	if frame.empty:
 		return frame
 	table = frame.copy()
+	table["Qualità"] = "-"
+
+	play_mask = table["decision"].astype(str) == "PLAY"
+	play = table.loc[play_mask].copy()
+	if play.empty:
+		return table
+
+	ev_series = pd.to_numeric(play.get("ev", pd.Series(index=play.index, dtype=float)), errors="coerce")
+	cf_series = pd.to_numeric(play.get("decision_confidence_score", pd.Series(index=play.index, dtype=float)), errors="coerce")
+	ev_rank = ev_series.rank(method="dense", pct=True)
+	cf_rank = cf_series.rank(method="dense", pct=True)
+	combined_score = QUALITY_RELATIVE_WEIGHTS["ev"] * ev_rank + QUALITY_RELATIVE_WEIGHTS["confidence"] * cf_rank
+	combined_score = combined_score.fillna(0.0)
+	play["quality_score"] = combined_score
+
+	top_threshold = float(combined_score.quantile(2.0 / 3.0))
+	good_threshold = float(combined_score.quantile(1.0 / 3.0))
+	policy = _load_play_policy_thresholds()
+	accept_confidence = float(policy.get("accept_threshold", policy["minimum_confidence"]))
+	confidence_median = float(cf_series.median()) if cf_series.notna().any() else np.nan
+
+	is_top_relative = combined_score >= top_threshold
+	is_good_relative = combined_score >= good_threshold
+	is_top_conf_ok = (cf_series >= confidence_median) if np.isfinite(confidence_median) else pd.Series(False, index=play.index)
+	is_clearly_strong_small_sample = is_top_relative & is_top_conf_ok & (cf_series >= accept_confidence)
+
+	play["Qualità"] = "MARGINALE"
+	play.loc[is_good_relative, "Qualità"] = "BUONA"
+	if len(play) < 6:
+		play.loc[is_clearly_strong_small_sample, "Qualità"] = "TOP"
+	else:
+		play.loc[is_top_relative & is_top_conf_ok, "Qualità"] = "TOP"
+
+	table.loc[play_mask, "Qualità"] = play["Qualità"].to_numpy()
+	return table
+
+
+def _to_percentage(value: Any, scale: float = 100.0, signed: bool = False, digits: int = 1) -> str:
+	if value is None or pd.isna(value):
+		return "-"
+	numeric = float(value) * scale
+	if signed:
+		return f"{numeric:+.{digits}f}%"
+	return f"{numeric:.{digits}f}%"
+
+
+def _to_decimal(value: Any, digits: int = 2) -> str:
+	if value is None or pd.isna(value):
+		return "-"
+	return f"{float(value):.{digits}f}"
+
+
+def _prepare_play_cards(frame: pd.DataFrame, side_filter: str, line_filter: str, quality_filter: str) -> list[dict[str, Any]]:
+	if frame.empty:
+		return []
+
+	table = _add_play_quality(frame)
+	table = table.loc[table["decision"] == "PLAY"].copy()
+	quality_internal = QUALITY_FILTER_OPTIONS.get(quality_filter, "ALL")
+	if quality_internal != "ALL":
+		table = table.loc[table["Qualità"] == quality_internal]
+	side_internal = SIDE_FILTER_OPTIONS.get(side_filter, "ALL")
+	if side_internal in {"OVER", "UNDER"}:
+		table = table.loc[table["side"].astype(str).str.upper() == side_internal]
+	line_internal = LINE_FILTER_OPTIONS.get(line_filter, "ALL")
+	if line_internal != "ALL":
+		table = table.loc[table["line"].astype(str) == line_internal]
+
+	if table.empty:
+		return []
+
+	quality_order = {"TOP": 0, "BUONA": 1, "MARGINALE": 2}
+	table["quality_rank"] = table["Qualità"].map(quality_order).fillna(99)
+	table = table.sort_values(["quality_rank", "ev", "decision_confidence_score"], ascending=[True, False, False], kind="stable")
+	cards: list[dict[str, Any]] = []
+	for _, row in table.iterrows():
+		market_implied_probability = np.nan
+		if pd.notna(row.get("closing_odds")) and float(row.get("closing_odds")) > 0.0:
+			market_implied_probability = 1.0 / float(row.get("closing_odds"))
+		edge = np.nan
+		if pd.notna(row.get("predicted_probability")) and pd.notna(market_implied_probability):
+			edge = float(row.get("predicted_probability")) - float(market_implied_probability)
+
+		cards.append(
+			{
+				"partita": f"{row.get('home_team', '')} - {row.get('away_team', '')}",
+				"kickoff": row.get("kickoff_utc"),
+				"esito": str(row.get("side", "")).upper(),
+				"linea": str(row.get("line", "")),
+				"bookmaker": row.get("bookmaker"),
+				"quota": row.get("closing_odds"),
+				"probabilita_modello": row.get("predicted_probability"),
+				"valore_atteso": row.get("ev"),
+				"affidabilita": row.get("decision_confidence_score"),
+				"puntata_consigliata": row.get("recommended_stake", row.get("stake")),
+				"decisione": "PLAY",
+				"qualita": row.get("Qualità", "-"),
+				"quota_equa": row.get("fair_odds"),
+				"probabilita_implicita": market_implied_probability,
+				"vantaggio": edge,
+				"model_target": row.get("target_name"),
+				"odds_timestamp": row.get("snapshot_timestamp"),
+			}
+		)
+	return cards
+
+
+def _render_play_cards(cards: list[dict[str, Any]]) -> None:
+	for card in cards:
+		if card.get("qualita") == "TOP":
+			st.markdown("<div style='padding:0.35rem 0.6rem;background:#1f7a1f;color:white;border-radius:8px;display:inline-block;font-weight:700;'>TOP</div>", unsafe_allow_html=True)
+		elif card.get("qualita") == "BUONA":
+			st.markdown("<div style='padding:0.3rem 0.55rem;background:#d98e04;color:white;border-radius:8px;display:inline-block;font-weight:600;'>BUONA</div>", unsafe_allow_html=True)
+		else:
+			st.markdown("<div style='padding:0.25rem 0.5rem;background:#8a8a8a;color:white;border-radius:8px;display:inline-block;font-weight:600;'>MARGINALE</div>", unsafe_allow_html=True)
+
+		st.markdown(f"### {card['partita']}")
+		st.caption(f"{UI_LABELS['kickoff']}: {card.get('kickoff') or '-'}")
+		st.markdown(f"**{card.get('esito', '-') } {card.get('linea', '-')}**")
+		st.markdown(f"{UI_LABELS['bookmaker']}: **{card.get('bookmaker') or '-'}**")
+
+		metric_col1, metric_col2, metric_col3 = st.columns(3)
+		metric_col1.metric(UI_LABELS["odds"], _to_decimal(card.get("quota")))
+		metric_col2.metric(UI_LABELS["model_probability"], _to_percentage(card.get("probabilita_modello"), scale=100.0, signed=False, digits=1))
+		metric_col3.metric("EV", _to_percentage(card.get("valore_atteso"), scale=100.0, signed=True, digits=1))
+
+		minor_col1, minor_col2 = st.columns(2)
+		minor_col1.metric(UI_LABELS["confidence"], _to_percentage(card.get("affidabilita"), scale=1.0, signed=False, digits=0))
+		minor_col2.metric(UI_LABELS["recommended_stake"], _to_percentage(card.get("puntata_consigliata"), scale=1.0, signed=False, digits=1))
+
+		st.success(DECISION_DISPLAY_MAP.get("PLAY", "GIOCA"))
+		with st.expander("Dettagli"):
+			st.write(f"{UI_LABELS['fair_odds']}: {_to_decimal(card.get('quota_equa'))}")
+			st.write(f"{UI_LABELS['market_implied_probability']}: {_to_percentage(card.get('probabilita_implicita'), scale=100.0, signed=False, digits=1)}")
+			st.write(f"{UI_LABELS['edge']}: {_to_percentage(card.get('vantaggio'), scale=100.0, signed=True, digits=1)}")
+			if card.get("model_target"):
+				st.write(f"model target: {card.get('model_target')}")
+			if card.get("odds_timestamp"):
+				st.write(f"odds timestamp: {card.get('odds_timestamp')}")
+		st.divider()
+
+
+def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
+	if frame.empty:
+		return frame
+	table = _add_play_quality(frame)
 	table["market implied probability"] = np.where(
 		table["closing_odds"].notna() & (table["closing_odds"] > 0.0),
 		1.0 / table["closing_odds"],
@@ -90,9 +351,11 @@ def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
 	table["recommended stake"] = table.get("recommended_stake", table.get("stake", np.nan))
 	table["fixture"] = table["home_team"].astype(str) + " vs " + table["away_team"].astype(str)
 	table["decision_rank"] = table["decision"].map(_decision_order)
+	table["decision_display"] = table["decision"].astype(str).map(_decision_display)
 	table = table.sort_values(["decision_rank", "ev"], ascending=[True, False], kind="stable")
 
 	desired_columns = [
+		"Qualità",
 		"fixture",
 		"kickoff_utc",
 		"line",
@@ -106,37 +369,53 @@ def _prepare_dashboard_table(frame: pd.DataFrame) -> pd.DataFrame:
 		"ev",
 		"decision_confidence_score",
 		"recommended stake",
-		"decision",
+		"decision_display",
 		"decision_reason",
 	]
 	present_columns = [column for column in desired_columns if column in table.columns]
 	return table[present_columns].rename(
 		columns={
-			"kickoff_utc": "kickoff",
-			"line": "market line",
-			"closing_odds": "odds",
-			"predicted_probability": "model probability",
-			"decision_confidence_score": "confidence",
+			"Qualità": "Qualità",
+			"fixture": UI_LABELS["fixture"],
+			"kickoff_utc": UI_LABELS["kickoff"],
+			"line": UI_LABELS["line"],
+			"side": UI_LABELS["side"],
+			"bookmaker": UI_LABELS["bookmaker"],
+			"closing_odds": UI_LABELS["odds"],
+			"predicted_probability": UI_LABELS["model_probability"],
+			"fair_odds": UI_LABELS["fair_odds"],
+			"market implied probability": UI_LABELS["market_implied_probability"],
+			"edge": UI_LABELS["edge"],
+			"decision_confidence_score": UI_LABELS["confidence"],
+			"recommended stake": UI_LABELS["recommended_stake"],
+			"decision_display": UI_LABELS["decision"],
+			"ev": "EV",
 		}
 	)
 
 
-def _apply_filters(frame: pd.DataFrame, filter_mode: str, side_filter: str, line_filter: str) -> pd.DataFrame:
+def _apply_filters(frame: pd.DataFrame, filter_mode: str, side_filter: str, line_filter: str, quality_filter: str) -> pd.DataFrame:
 	if frame.empty:
 		return frame
-	table = frame.copy()
-	if filter_mode == "PLAY ONLY":
-		table = table.loc[table["decision"] == "PLAY"]
-	if side_filter in {"OVER", "UNDER"}:
-		table = table.loc[table["side"].astype(str).str.upper() == side_filter]
-	if line_filter != "ALL":
-		table = table.loc[table["line"].astype(str) == line_filter]
+	table = _add_play_quality(frame)
+	decision_internal = DECISION_FILTER_OPTIONS.get(filter_mode, "ALL")
+	if decision_internal != "ALL":
+		table = table.loc[table["decision"] == decision_internal]
+	quality_internal = QUALITY_FILTER_OPTIONS.get(quality_filter, "ALL")
+	if quality_internal != "ALL":
+		table = table.loc[table["Qualità"] == quality_internal]
+	side_internal = SIDE_FILTER_OPTIONS.get(side_filter, "ALL")
+	if side_internal in {"OVER", "UNDER"}:
+		table = table.loc[table["side"].astype(str).str.upper() == side_internal]
+	line_internal = LINE_FILTER_OPTIONS.get(line_filter, "ALL")
+	if line_internal != "ALL":
+		table = table.loc[table["line"].astype(str) == line_internal]
 	return table
 
 
 def _render_dashboard() -> None:
 	st.header("Dashboard")
-	st.caption("PAPER TRADING MODE")
+	st.caption("Paper Trading mode")
 
 	status = _read_prematch_status(PREMATCH_STATUS_PATH)
 	last_update = status.get("completed_at") or "not run yet"
@@ -145,14 +424,14 @@ def _render_dashboard() -> None:
 
 	col1, col2, col3, col4 = st.columns(4)
 	col1.metric("CornerLab", "Operational")
-	col2.metric("Last update", str(last_update))
-	col3.metric("System health", "OK" if health_ok else "CHECK")
-	col4.metric("Odds provider", str(provider_status).upper())
+	col2.metric(UI_LABELS["last_update"], str(last_update))
+	col3.metric(UI_LABELS["system_health"], "OK" if health_ok else "CHECK")
+	col4.metric(UI_LABELS["odds_provider"], str(provider_status).upper())
 
 	if "run_active" not in st.session_state:
 		st.session_state["run_active"] = False
 
-	if st.button("UPDATE PRE-MATCH", type="primary", disabled=bool(st.session_state["run_active"])):
+	if st.button(UI_LABELS["update_prematch"], type="primary", disabled=bool(st.session_state["run_active"])):
 		st.session_state["run_active"] = True
 		try:
 			with st.status("Running pre-match pipeline...", expanded=True) as state:
@@ -169,24 +448,33 @@ def _render_dashboard() -> None:
 
 	report = _read_report(REPORT_PATH)
 	if report.empty:
-		st.info("No paper-trading report available yet. Run UPDATE PRE-MATCH.")
+		st.info("Nessun report paper-trading disponibile. Esegui AGGIORNA PRE-PARTITA.")
 		return
 
-	filter_col1, filter_col2, filter_col3 = st.columns(3)
-	filter_mode = filter_col1.selectbox("Decision filter", ["ALL", "PLAY ONLY"], index=0)
-	side_filter = filter_col2.selectbox("Side", ["ALL", "OVER", "UNDER"], index=0)
-	line_filter = filter_col3.selectbox("Line", ["ALL", "8.5", "9.5", "10.5", "11.5"], index=0)
+	filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+	filter_mode = filter_col1.selectbox(UI_LABELS["decision_filter"], list(DECISION_FILTER_OPTIONS.keys()), index=0)
+	side_filter = filter_col2.selectbox(UI_LABELS["side"], list(SIDE_FILTER_OPTIONS.keys()), index=0)
+	line_filter = filter_col3.selectbox(UI_LABELS["line"], list(LINE_FILTER_OPTIONS.keys()), index=0)
+	quality_filter = filter_col4.selectbox("Qualità", list(QUALITY_FILTER_OPTIONS.keys()), index=0)
+	st.caption(QUALITY_INFO_TEXT)
 
-	filtered = _apply_filters(report, filter_mode, side_filter, line_filter)
-	dashboard_table = _prepare_dashboard_table(filtered)
-	st.dataframe(dashboard_table, use_container_width=True, hide_index=True)
+	play_cards = _prepare_play_cards(report, side_filter=side_filter, line_filter=line_filter, quality_filter=quality_filter)
+	if play_cards:
+		_render_play_cards(play_cards)
+	else:
+		st.info(NO_PLAY_MESSAGE)
+
+	with st.expander(FULL_VIEW_LABEL):
+		filtered = _apply_filters(report, filter_mode, side_filter, line_filter, quality_filter)
+		dashboard_table = _prepare_dashboard_table(filtered)
+		st.dataframe(dashboard_table, use_container_width=True, hide_index=True)
 
 
 def _render_history() -> None:
-	st.header("History")
+	st.header(UI_LABELS["history"])
 	rows = _load_history_rows(HISTORY_PATH)
 	if not rows:
-		st.info("No pre-match run history available yet.")
+		st.info("Nessuno storico pre-partita disponibile.")
 		return
 
 	history_frame = pd.DataFrame(rows)
@@ -205,7 +493,7 @@ def _render_history() -> None:
 	st.dataframe(history_frame[visible_columns], use_container_width=True, hide_index=True)
 
 	run_choices = history_frame["run_id"].astype(str).tolist()
-	selected_run = st.selectbox("Open previous run", run_choices)
+	selected_run = st.selectbox("Apri esecuzione precedente", run_choices)
 	selected_row = history_frame.loc[history_frame["run_id"].astype(str) == selected_run].iloc[0].to_dict()
 	run_csv = Path(str(selected_row.get("run_csv", "")))
 	if run_csv.exists():
@@ -213,7 +501,7 @@ def _render_history() -> None:
 		st.subheader(f"Run {selected_run}")
 		st.dataframe(_prepare_dashboard_table(run_frame), use_container_width=True, hide_index=True)
 	else:
-		st.warning("Run detail file is not available.")
+		st.warning("Il file di dettaglio non è disponibile.")
 
 
 def main() -> None:
@@ -223,6 +511,7 @@ def main() -> None:
 		<style>
 			.block-container {max-width: 860px; padding-top: 1.2rem; padding-bottom: 2rem;}
 			.stButton button {width: 100%; min-height: 3rem; font-size: 1rem;}
+			[data-testid="stDataFrame"] {font-size: 0.92rem;}
 		</style>
 		""",
 		unsafe_allow_html=True,
@@ -233,20 +522,20 @@ def main() -> None:
 
 	if not st.session_state["authenticated"]:
 		st.title("CornerLab")
-		st.caption("Mobile operational dashboard")
+		st.caption("Dashboard operativo mobile")
 		st.subheader("Login")
 		password = st.text_input("Password", type="password")
-		if st.button("Sign in", type="primary"):
+		if st.button("Accedi", type="primary"):
 			if _verify_login(password):
 				st.session_state["authenticated"] = True
 				st.rerun()
 			else:
-				st.error("Invalid credentials or CORNERLAB_APP_PASSWORD is not configured.")
+				st.error("Credenziali non valide o CORNERLAB_APP_PASSWORD non configurata.")
 		return
 
 	st.title("CornerLab")
-	page = st.radio("Page", ["DASHBOARD", "HISTORY"], horizontal=True)
-	if page == "DASHBOARD":
+	page = st.radio("Pagina", ["Dashboard", UI_LABELS["history"]], horizontal=True)
+	if page == "Dashboard":
 		_render_dashboard()
 	else:
 		_render_history()
