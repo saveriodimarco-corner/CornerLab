@@ -57,9 +57,9 @@ class CollectorScheduler:
                     "decimal_odds": row.get("odd"),
                     "snapshot_timestamp": self.config.now_utc(),
                     "minutes_to_kickoff": 60,
-                    "provider": "api-football",
-                    "provider_event_id": str(fixture.get("provider_fixture_id", "")),
-                    "raw_response_hash": "live",
+                    "provider": "the-odds-api",
+                    "provider_event_id": str(row.get("source_fixture_id") or fixture.get("provider_fixture_id", "")),
+                    "raw_response_hash": "live_the_odds_api",
                     "import_timestamp": self.config.now_utc(),
                 }
                 stored = self.odds_collector.collect_odds(payload)

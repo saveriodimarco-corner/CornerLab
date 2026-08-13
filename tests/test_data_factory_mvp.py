@@ -183,6 +183,38 @@ def test_normal_odds_persistence_is_unchanged(temp_repo):
     assert repo.get_odds_status(1, provider="api-football") is None
 
 
+def test_collect_odds_uses_source_fixture_id_when_present(temp_repo):
+    config, repo = temp_repo
+    collector = OddsCollector(config, repo)
+    collector.collect_odds_for_fixture(
+        1,
+        "api-football-fix-1",
+        lambda fixture_id: [
+            {
+                "bookmaker": "BetRivers",
+                "market": "TOTAL_CORNERS_OVER",
+                "line": "9.5",
+                "side": "OVER",
+                "odd": 2.05,
+                "source_fixture_id": "the-odds-event-1",
+            }
+        ],
+        provider="the-odds-api",
+    )
+
+    conn = sqlite3.connect(config.db_path)
+    try:
+        row = conn.execute(
+            "SELECT provider_event_id, provider FROM collector_odds_snapshots WHERE fixture_id = 1 ORDER BY snapshot_id DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row[0] == "the-odds-event-1"
+    assert row[1] == "the-odds-api"
+
+
 def test_in_play_odds_excluded_from_closing(temp_repo):
     config, repo = temp_repo
     engine = SnapshotEngine(config, repo)

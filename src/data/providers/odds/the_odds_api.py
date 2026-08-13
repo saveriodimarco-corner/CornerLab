@@ -24,6 +24,7 @@ class TheOddsApiProvider(BaseOddsProvider):
         sport_key: str | None = None,
         regions: str | None = "eu",
         bookmakers: str | None = None,
+        markets: str | None = "alternate_totals_corners",
         odds_format: str = "decimal",
         date_format: str = "iso",
         timeout: int = 15,
@@ -42,6 +43,7 @@ class TheOddsApiProvider(BaseOddsProvider):
         self.sport_key = sport_key or ""
         self.regions = regions or "eu"
         self.bookmakers = bookmakers or ""
+        self.markets = markets or "alternate_totals_corners"
         self.odds_format = odds_format
         self.date_format = date_format
         self.timeout = timeout
@@ -204,6 +206,7 @@ class TheOddsApiProvider(BaseOddsProvider):
         params = {
             "regions": self.regions,
             "bookmakers": self.bookmakers,
+            "markets": self.markets,
             "oddsFormat": self.odds_format,
             "dateFormat": self.date_format,
         }

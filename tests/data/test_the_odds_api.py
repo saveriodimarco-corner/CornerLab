@@ -128,6 +128,25 @@ class TestTheOddsApiProvider:
         assert request_kwargs["params"]["oddsFormat"] == "decimal"
         assert "Authorization" not in request_kwargs["headers"]
 
+    def test_fetch_event_odds_includes_additional_market_param(self) -> None:
+        provider = TheOddsApiProvider(
+            api_key="test-key",
+            base_url="https://example.test",
+            sport_key="soccer_italy_serie_a",
+            regions="us",
+            markets="alternate_totals_corners",
+        )
+
+        with patch.object(provider, "_get_json", return_value={"id": "evt-1", "bookmakers": []}) as mocked:
+            provider.fetch_event_odds(event_id="evt-1")
+
+        endpoint = mocked.call_args.args[0]
+        params = mocked.call_args.kwargs["params"]
+        assert endpoint == "/v4/sports/soccer_italy_serie_a/events/evt-1/odds"
+        assert params["regions"] == "us"
+        assert params["markets"] == "alternate_totals_corners"
+        assert params["oddsFormat"] == "decimal"
+
     def test_missing_key_fails_before_any_api_call(self) -> None:
         provider = TheOddsApiProvider(api_key="   ", base_url="https://example.test")
 

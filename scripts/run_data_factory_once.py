@@ -44,14 +44,14 @@ def main() -> None:
         if not provider_fixture_id:
             continue
         fixtures_checked += 1
-        result = collector.collect_odds_for_fixture(fixture_id, provider_fixture_id, lambda fixture_id_value: adapter.fetch_odds(fixture_id_value), provider="api-football")
+        result = collector.collect_odds_for_fixture(fixture_id, provider_fixture_id, lambda fixture_id_value: adapter.fetch_odds(fixture_id_value), provider="the-odds-api")
         odds_checked += result["checked"]
         odds_downloaded += result["downloaded"]
         odds_inserted += result["inserted"]
         odds_skipped += 1 if result.get("skipped") else 0
         if result.get("skipped"):
             odds_retry_skipped += 1
-        if repo.get_odds_status(fixture_id, provider="api-football") is not None:
+        if repo.get_odds_status(fixture_id, provider="the-odds-api") is not None:
             odds_pending_retry += 1
         if result["downloaded"]:
             fixtures_with_odds += 1

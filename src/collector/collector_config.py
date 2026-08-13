@@ -21,6 +21,8 @@ class CollectorConfig:
     db_path: Path | None = None
     api_football_key: Optional[str] = None
     the_odds_api_key: Optional[str] = None
+    the_odds_regions: str = "us"
+    the_odds_market: str = "alternate_totals_corners"
     scheduler_interval_minutes: int = 10
     closing_odds_cutoff_minutes: int = 5
     request_timeout_seconds: int = 15
@@ -40,6 +42,8 @@ class CollectorConfig:
         self.data_dir = Path(self.data_dir)
         self.api_football_key = self.api_football_key or os.getenv("API_FOOTBALL_KEY")
         self.the_odds_api_key = self.the_odds_api_key or os.getenv("THE_ODDS_API_KEY")
+        self.the_odds_regions = (os.getenv("THE_ODDS_API_REGIONS") or self.the_odds_regions or "us").strip() or "us"
+        self.the_odds_market = (os.getenv("THE_ODDS_API_MARKET") or self.the_odds_market or "alternate_totals_corners").strip() or "alternate_totals_corners"
 
     def now_utc(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

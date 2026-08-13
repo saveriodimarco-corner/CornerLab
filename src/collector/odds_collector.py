@@ -58,8 +58,8 @@ class OddsCollector:
                 "snapshot_timestamp": self.config.now_utc(),
                 "minutes_to_kickoff": 60,
                 "provider": provider,
-                "provider_event_id": provider_fixture_id,
-                "raw_response_hash": "live",
+                "provider_event_id": odds_row.get("source_fixture_id") or provider_fixture_id,
+                "raw_response_hash": f"live_{str(provider).replace('-', '_')}",
                 "import_timestamp": self.config.now_utc(),
             }
             stored = self.collect_odds(payload)
