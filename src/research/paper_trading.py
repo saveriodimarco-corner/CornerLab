@@ -5,8 +5,10 @@ import hashlib
 import json
 import pickle
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -25,6 +27,8 @@ LINE_TO_PROBABILITY_COLUMN = {
     "10.5": "predicted_probability_over_10_5",
     "11.5": "predicted_probability_over_11_5",
 }
+
+SUPPORTED_DECISIONS = {"PLAY", "NO BET", "LOW CONFIDENCE"}
 
 MARKET_LINE_TO_TARGET_NAME = {
     "8.5": "over_8_5",
@@ -91,30 +95,75 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
     ]
     scored_report = pd.concat([scored_report.reset_index(drop=True), scored_rows[traceability_columns].reset_index(drop=True)], axis=1)
 
+    if not scored_report.empty:
+        scored_report["market_implied_probability"] = np.where(
+            scored_report["closing_odds"].notna() & (scored_report["closing_odds"] > 0.0),
+            1.0 / scored_report["closing_odds"],
+            np.nan,
+        )
+        scored_report["edge"] = scored_report["predicted_probability"] - scored_report["market_implied_probability"]
+        scored_report["stake"] = scored_report.get("recommended_stake", np.nan)
+        scored_report["decision_reason"] = np.where(
+            scored_report["decision"] == "LOW CONFIDENCE",
+            "CONFIDENCE_BELOW_THRESHOLD",
+            np.where(scored_report["decision"] == "PLAY", "POSITIVE_EV", "NON_POSITIVE_EV"),
+        )
+
     report = pd.concat([scored_report, unavailable_rows], ignore_index=True, sort=False)
     report = report.sort_values("row_order", kind="stable").reset_index(drop=True)
+
+    run_id = f"prematch-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid4().hex[:8]}"
+    report["run_id"] = run_id
 
     data_dir = output_dir / "data" / "paper_trading"
     reports_dir = output_dir / "reports"
     data_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
 
+    runs_dir = data_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
     parquet_path = data_dir / "paper_trades_current.parquet"
     csv_path = reports_dir / "paper_trading_current.csv"
     summary_path = reports_dir / "paper_trading_summary.md"
+    run_parquet_path = runs_dir / f"{run_id}.parquet"
+    run_csv_path = runs_dir / f"{run_id}.csv"
 
     report.to_parquet(parquet_path, index=False)
     report.to_csv(csv_path, index=False)
+    report.to_parquet(run_parquet_path, index=False)
+    report.to_csv(run_csv_path, index=False)
     summary_path.write_text(build_summary_markdown(report, validation_errors), encoding="utf-8")
 
     supported_market_rows = int((report["market_support_status"] == "SUPPORTED").sum()) if "market_support_status" in report.columns else 0
     unsupported_market_rows = int((report["market_support_status"] == "UNSUPPORTED").sum()) if "market_support_status" in report.columns else 0
     model_input_failed_rows = int((report["scoring_status"] == "FAILED").sum()) if "scoring_status" in report.columns else 0
-    model_scored_rows = int(report["decision"].isin(["PLAY", "NO BET", "LOW CONFIDENCE"]).sum()) if "decision" in report.columns else 0
+    model_scored_rows = int(report["decision"].isin(SUPPORTED_DECISIONS).sum()) if "decision" in report.columns else 0
+    over_under_warnings = _validate_over_under_complement(report)
+    scored_mask = report["decision"].isin(SUPPORTED_DECISIONS)
+
+    history_entry = {
+        "run_id": run_id,
+        "run_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "fixtures_evaluated": int(report["fixture_id"].nunique()) if "fixture_id" in report.columns else 0,
+        "odds_rows": int(len(report)),
+        "play_count": int((report["decision"] == "PLAY").sum()),
+        "no_bet_count": int((report["decision"] == "NO BET").sum()),
+        "low_confidence_count": int((report["decision"] == "LOW CONFIDENCE").sum()),
+        "average_ev": float(report.loc[scored_mask, "ev"].mean()) if report.loc[scored_mask, "ev"].notna().any() else None,
+        "supported_models": sorted(report.loc[report["market_support_status"] == "SUPPORTED", "target_name"].dropna().astype(str).unique().tolist()),
+        "warnings": list(validation_errors) + over_under_warnings,
+        "report_csv": str(csv_path),
+        "report_parquet": str(parquet_path),
+        "run_csv": str(run_csv_path),
+        "run_parquet": str(run_parquet_path),
+    }
+    _append_run_history(data_dir / "run_history.jsonl", history_entry)
 
     return {
         "report": report,
         "summary": {
+            "run_id": run_id,
             "total_odds_rows": int(len(validated_odds)),
             "supported_market_rows": supported_market_rows,
             "unsupported_market_rows": unsupported_market_rows,
@@ -123,14 +172,19 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
             "play_count": int((report["decision"] == "PLAY").sum()),
             "low_confidence_count": int((report["decision"] == "LOW CONFIDENCE").sum()),
             "no_bet_count": int((report["decision"] == "NO BET").sum()),
-            "average_ev": float(report.loc[report["decision"].isin(["PLAY", "NO BET", "LOW CONFIDENCE"]), "ev"].mean()) if "ev" in report.columns and report.loc[report["decision"].isin(["PLAY", "NO BET", "LOW CONFIDENCE"]), "ev"].notna().any() else float("nan"),
-            "average_confidence": float(report.loc[report["decision"].isin(["PLAY", "NO BET", "LOW CONFIDENCE"]), "decision_confidence_score"].mean()) if "decision_confidence_score" in report.columns and report.loc[report["decision"].isin(["PLAY", "NO BET", "LOW CONFIDENCE"]), "decision_confidence_score"].notna().any() else float("nan"),
+            "average_ev": float(report.loc[scored_mask, "ev"].mean()) if "ev" in report.columns and report.loc[scored_mask, "ev"].notna().any() else float("nan"),
+            "average_confidence": float(report.loc[scored_mask, "decision_confidence_score"].mean()) if "decision_confidence_score" in report.columns and report.loc[scored_mask, "decision_confidence_score"].notna().any() else float("nan"),
             "fixtures": int(report["fixture_id"].nunique()) if "fixture_id" in report.columns else 0,
+            "over_under_engine_ok": len(over_under_warnings) == 0,
+            "warnings": over_under_warnings,
         },
         "output_paths": {
             "parquet": parquet_path,
             "csv": csv_path,
             "summary": summary_path,
+            "run_parquet": run_parquet_path,
+            "run_csv": run_csv_path,
+            "history": data_dir / "run_history.jsonl",
         },
         "validation_errors": validation_errors,
     }
@@ -362,8 +416,7 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
         confidence_row = confidence_rows.iloc[0]
 
         line = str(odds_row["line"]).strip()
-        probability_column = LINE_TO_PROBABILITY_COLUMN.get(line)
-        if probability_column is None:
+        if line not in LINE_TO_PROBABILITY_COLUMN:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="UNSUPPORTED_MARKET", row_order=row_order, target_name=None))
             continue
 
@@ -389,10 +442,12 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
             continue
 
         try:
-            model_probability = float(np.asarray(_predict_with_loaded_model(bundle["model"], aligned_frame)).reshape(-1)[0])
+            over_probability = float(np.asarray(_predict_with_loaded_model(bundle["model"], aligned_frame)).reshape(-1)[0])
         except Exception:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
             continue
+
+        model_probability = _resolve_market_probability(market=str(odds_row.get("market", "")), side=str(odds_row.get("side", "")), over_probability=over_probability)
 
         rows.append(
             {
@@ -452,9 +507,18 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
 def _target_name_for_market_line(market: str, line: str) -> str | None:
     market = str(market).upper()
     line = str(line).strip()
-    if market != "TOTAL_CORNERS_OVER":
+    if market not in {"TOTAL_CORNERS_OVER", "TOTAL_CORNERS_UNDER"}:
         return None
     return MARKET_LINE_TO_TARGET_NAME.get(line)
+
+
+def _resolve_market_probability(market: str, side: str, over_probability: float) -> float:
+    market = str(market).upper()
+    side = str(side).upper()
+    over_probability = float(np.clip(over_probability, 0.0, 1.0))
+    if market == "TOTAL_CORNERS_UNDER" or side == "UNDER":
+        return float(np.clip(1.0 - over_probability, 0.0, 1.0))
+    return over_probability
 
 
 def _align_feature_schema(frame: pd.DataFrame, expected_features: list[str]) -> tuple[bool, pd.DataFrame]:
@@ -547,6 +611,36 @@ def _build_unavailable_row(
         "fair_odds": np.nan,
         "decision_confidence_score": np.nan,
     }
+
+
+def _append_run_history(history_path: Path, entry: dict[str, Any]) -> None:
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
+def _validate_over_under_complement(report: pd.DataFrame, tolerance: float = 1e-9) -> list[str]:
+    warnings: list[str] = []
+    if report.empty:
+        return warnings
+
+    scored = report.loc[report["decision"].isin(SUPPORTED_DECISIONS)].copy()
+    if scored.empty:
+        return warnings
+
+    grouped = scored.groupby(["fixture_id", "bookmaker", "line"], dropna=False)
+    for group_key, group in grouped:
+        over_rows = group.loc[group["side"].astype(str).str.upper() == "OVER"]
+        under_rows = group.loc[group["side"].astype(str).str.upper() == "UNDER"]
+        if over_rows.empty or under_rows.empty:
+            continue
+        over_probability = float(over_rows.iloc[0]["predicted_probability"])
+        under_probability = float(under_rows.iloc[0]["predicted_probability"])
+        if not np.isfinite(over_probability) or not np.isfinite(under_probability):
+            continue
+        if abs((over_probability + under_probability) - 1.0) > tolerance:
+            warnings.append(f"OVER_UNDER_COMPLEMENT_MISMATCH fixture={group_key[0]} bookmaker={group_key[1]} line={group_key[2]}")
+    return warnings
 
 
 def _load_historical_matches(base_dir: Path) -> pd.DataFrame:
@@ -643,18 +737,25 @@ def _load_live_fixtures_and_odds(base_dir: Path) -> tuple[pd.DataFrame, pd.DataF
 
 
 def build_summary_markdown(report: pd.DataFrame, validation_errors: list[str]) -> str:
+    scored_mask = report["decision"].isin(SUPPORTED_DECISIONS) if "decision" in report.columns else pd.Series(dtype=bool)
+    supported_market_rows = int((report["market_support_status"] == "SUPPORTED").sum()) if "market_support_status" in report.columns else 0
+    unsupported_market_rows = int((report["market_support_status"] == "UNSUPPORTED").sum()) if "market_support_status" in report.columns else 0
     lines = [
         "# Paper Trading Summary",
         "",
         "This report scores the current live corners odds against fixture-level pre-match probabilities derived from historical Serie A corner history.",
         "",
-        f"- Rows scored: {len(report)}",
+        f"- Total rows: {len(report)}",
+        f"- Supported market rows: {supported_market_rows}",
+        f"- Unsupported market rows: {unsupported_market_rows}",
+        f"- Model scored rows: {int(scored_mask.sum())}",
         f"- Fixtures covered: {report['fixture_id'].nunique() if 'fixture_id' in report.columns else 0}",
         f"- PLAY decisions: {(report['decision'] == 'PLAY').sum()}",
         f"- LOW CONFIDENCE decisions: {(report['decision'] == 'LOW CONFIDENCE').sum()}",
         f"- NO BET decisions: {(report['decision'] == 'NO BET').sum()}",
-        f"- Average EV: {report['ev'].mean():.3f}" if report['ev'].notna().any() else "- Average EV: nan",
-        f"- Average decision confidence: {report['decision_confidence_score'].mean():.1f}" if report['decision_confidence_score'].notna().any() else "- Average decision confidence: nan",
+        f"- MODEL_UNAVAILABLE decisions: {(report['decision'] == 'MODEL_UNAVAILABLE').sum()}",
+        f"- Average EV: {report.loc[scored_mask, 'ev'].mean():.3f}" if report.loc[scored_mask, 'ev'].notna().any() else "- Average EV: nan",
+        f"- Average decision confidence: {report.loc[scored_mask, 'decision_confidence_score'].mean():.1f}" if report.loc[scored_mask, 'decision_confidence_score'].notna().any() else "- Average decision confidence: nan",
         "",
         "## Validation",
     ]

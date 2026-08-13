@@ -1,0 +1,37 @@
+{
+  "run_type": "prematch",
+  "started_at": "2026-08-13T13:57:39Z",
+  "completed_at": "2026-08-13T13:58:10Z",
+  "health_ok": true,
+  "collector": {
+    "fixtures_fetched": 7,
+    "fixtures_matched_to_odds_events": 7,
+    "fixture_writes": 7,
+    "odds_downloaded": 56,
+    "odds_writes": 56,
+    "provider": "the-odds-api",
+    "provider_status": "ok"
+  },
+  "paper_trading": {
+    "run_id": "prematch-20260813T135810Z-506538be",
+    "total_odds_rows": 208,
+    "supported_market_rows": 104,
+    "unsupported_market_rows": 104,
+    "model_scored_rows": 104,
+    "model_input_failed_rows": 0,
+    "play_count": 38,
+    "low_confidence_count": 0,
+    "no_bet_count": 66,
+    "average_ev": -0.055684185617604125,
+    "average_confidence": 62.01297234054726,
+    "fixtures": 7,
+    "over_under_engine_ok": true,
+    "warnings": []
+  },
+  "output_paths": {
+    "report_csv": "/Users/saverio/Documents/CornerLab/CornerLab/reports/paper_trading_current.csv",
+    "report_parquet": "/Users/saverio/Documents/CornerLab/CornerLab/data/paper_trading/paper_trades_current.parquet",
+    "summary": "/Users/saverio/Documents/CornerLab/CornerLab/reports/paper_trading_summary.md",
+    "run_history": "/Users/saverio/Documents/CornerLab/CornerLab/data/paper_trading/run_history.jsonl"
+  }
+}

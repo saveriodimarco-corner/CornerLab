@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.research.paper_trading import build_live_fixture_features, run_paper_trading
+from src.research.paper_trading import (
+    _resolve_market_probability,
+    build_live_fixture_features,
+    run_paper_trading,
+)
 
 
 def test_build_live_fixture_features_uses_historical_state() -> None:
@@ -75,9 +79,24 @@ def test_run_paper_trading_writes_current_artifacts(tmp_path: Path) -> None:
     assert set(report["decision"].unique()).issubset({"PLAY", "LOW CONFIDENCE", "NO BET", "MODEL_UNAVAILABLE"})
     assert (report["decision"] == "MODEL_UNAVAILABLE").any()
     assert set(report.loc[report["decision"] == "MODEL_UNAVAILABLE", "decision_reason"].unique()).issubset({"NO_ACCEPTED_MODEL", "MODEL_INPUT_FAILED", "UNSUPPORTED_MARKET"})
+    unsupported_targets = report.loc[report["market_support_status"] == "UNSUPPORTED", "target_name"].dropna().unique().tolist()
+    assert "over_8_5" in unsupported_targets
+    assert "over_11_5" in unsupported_targets
+    assert (report.loc[report["target_name"].isin(["over_8_5", "over_11_5"]), "decision"] == "MODEL_UNAVAILABLE").all()
+    assert (report["market"] == "TOTAL_CORNERS_UNDER").any()
+    assert "run_id" in report.columns
+    assert "market_implied_probability" in report.columns
+    assert "edge" in report.columns
     assert "decision_state" in report.columns
     assert "provider_event_id" in report.columns
 
     assert (tmp_path / "data" / "paper_trading" / "paper_trades_current.parquet").exists()
     assert (tmp_path / "reports" / "paper_trading_current.csv").exists()
     assert (tmp_path / "reports" / "paper_trading_summary.md").exists()
+    assert (tmp_path / "data" / "paper_trading" / "run_history.jsonl").exists()
+    assert (tmp_path / "data" / "paper_trading" / "runs").exists()
+
+
+def test_under_probability_is_complement_of_over_probability() -> None:
+    assert _resolve_market_probability("TOTAL_CORNERS_OVER", "OVER", 0.62) == 0.62
+    assert _resolve_market_probability("TOTAL_CORNERS_UNDER", "UNDER", 0.62) == 0.38
