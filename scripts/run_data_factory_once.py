@@ -14,6 +14,27 @@ from src.collector.live_provider_adapter import LiveProviderAdapter
 from src.collector.odds_collector import OddsCollector
 
 
+def _apply_result_counters(
+    result: dict,
+    odds_checked: int,
+    odds_downloaded: int,
+    odds_inserted: int,
+    odds_skipped: int,
+    odds_retry_skipped: int,
+    genuine_corner_inserted: int,
+) -> tuple[int, int, int, int, int, int]:
+    odds_checked += int(result.get("checked") or 0)
+    odds_downloaded += int(result.get("downloaded") or 0)
+    inserted = int(result.get("inserted") or 0)
+    odds_inserted += inserted
+    # The live The Odds API adapter is already constrained to genuine total-corner rows.
+    genuine_corner_inserted += inserted
+    skipped = bool(result.get("skipped"))
+    odds_skipped += 1 if skipped else 0
+    odds_retry_skipped += 1 if skipped else 0
+    return odds_checked, odds_downloaded, odds_inserted, odds_skipped, odds_retry_skipped, genuine_corner_inserted
+
+
 def main() -> None:
     config = CollectorConfig(db_path=Path("data/collector.sqlite"))
     repo = CollectorRepository(config)
@@ -45,12 +66,15 @@ def main() -> None:
             continue
         fixtures_checked += 1
         result = collector.collect_odds_for_fixture(fixture_id, provider_fixture_id, lambda fixture_id_value: adapter.fetch_odds(fixture_id_value), provider="the-odds-api")
-        odds_checked += result["checked"]
-        odds_downloaded += result["downloaded"]
-        odds_inserted += result["inserted"]
-        odds_skipped += 1 if result.get("skipped") else 0
-        if result.get("skipped"):
-            odds_retry_skipped += 1
+        odds_checked, odds_downloaded, odds_inserted, odds_skipped, odds_retry_skipped, genuine_corner_inserted = _apply_result_counters(
+            result,
+            odds_checked,
+            odds_downloaded,
+            odds_inserted,
+            odds_skipped,
+            odds_retry_skipped,
+            genuine_corner_inserted,
+        )
         if repo.get_odds_status(fixture_id, provider="the-odds-api") is not None:
             odds_pending_retry += 1
         if result["downloaded"]:
