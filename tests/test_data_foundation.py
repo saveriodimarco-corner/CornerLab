@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.config import CONFIG
+from src.config import CONFIG, Config
 from src.engine.feature_store import FeatureStore
 from src.engine.team_rating import TeamRatingEngine
 from src.utils.cache import CacheManager
@@ -62,6 +62,21 @@ def test_config_contains_expected_settings():
     assert CONFIG.EWMA_ALPHA > 0
     assert CONFIG.MAX_OSA_ITERATIONS > 0
     assert len(CONFIG.DEFAULT_THRESHOLDS) == 4
+
+
+def test_config_data_paths_are_complete_and_independent():
+    first = Config()
+    second = Config()
+    expected = {
+        "raw": Path(__file__).resolve().parents[1] / "data" / "raw",
+        "processed": Path(__file__).resolve().parents[1] / "data" / "processed",
+        "features": Path(__file__).resolve().parents[1] / "data" / "features",
+        "predictions": Path(__file__).resolve().parents[1] / "data" / "predictions",
+    }
+
+    assert first.DATA_PATHS == expected
+    assert second.DATA_PATHS == expected
+    assert first.DATA_PATHS is not second.DATA_PATHS
 
 
 def test_engine_uses_shared_configuration(match_data: pd.DataFrame):
