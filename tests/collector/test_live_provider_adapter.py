@@ -23,6 +23,15 @@ class _FakeOddsApi:
         return pd.DataFrame(self._odds_rows)
 
 
+class _FakeApiFootball:
+    def __init__(self, payloads_by_league):
+        self.payloads_by_league = payloads_by_league
+
+    def _perform_request(self, path: str, params=None):
+        league_id = int((params or {}).get('league'))
+        return {'response': self.payloads_by_league.get(league_id, [])}
+
+
 def test_fetch_odds_skips_unresolved_fixture() -> None:
     with TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'collector.sqlite'
@@ -172,3 +181,95 @@ def test_fetch_odds_matches_atalanta_alias_to_atalanta_bc() -> None:
 
         assert rows
         assert rows[0]['source_fixture_id'] == 'evt-atalanta-bc'
+
+
+def test_fetch_fixtures_collects_serie_a_and_premier_league() -> None:
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'collector.sqlite'
+        config = CollectorConfig(db_path=db_path)
+        CollectorRepository(config)
+        adapter = LiveProviderAdapter(config)
+        adapter.api_football = _FakeApiFootball(
+            {
+                135: [
+                    {
+                        'fixture': {'id': 1, 'date': '2026-08-20T18:45:00Z', 'status': {'short': 'NS'}},
+                        'teams': {'home': {'name': 'Inter'}, 'away': {'name': 'Roma'}},
+                    }
+                ],
+                136: [
+                    {
+                        'fixture': {'id': 2, 'date': '2026-08-21T18:45:00Z', 'status': {'short': 'NS'}},
+                        'teams': {'home': {'name': 'Palermo'}, 'away': {'name': 'Bari'}},
+                    }
+                ],
+                39: [
+                    {
+                        'fixture': {'id': 3, 'date': '2026-08-22T18:45:00Z', 'status': {'short': 'NS'}},
+                        'teams': {'home': {'name': 'Arsenal'}, 'away': {'name': 'Chelsea'}},
+                    }
+                ],
+            }
+        )
+
+        rows = adapter.fetch_fixtures()
+
+        assert len(rows) == 2
+        assert {row['competition'] for row in rows} == {'Serie A', 'Premier League'}
+
+
+def test_fetch_odds_uses_epl_sport_key_for_premier_league_fixture() -> None:
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'collector.sqlite'
+        config = CollectorConfig(db_path=db_path)
+        repo = CollectorRepository(config)
+        repo.upsert_fixture(
+            {
+                'provider_fixture_id': 'api-football-serie-b-1',
+                'competition': 'Premier League',
+                'season': '2026',
+                'kickoff_utc': '2026-08-20T18:45:00Z',
+                'home_team': 'Arsenal',
+                'away_team': 'Chelsea',
+                'status': 'NS',
+                'provider': 'api-football',
+            }
+        )
+
+        captured = {}
+
+        class _EplOddsApi(_FakeOddsApi):
+            def list_events(self, sport: str | None = None):
+                captured['list_sport'] = sport
+                return super().list_events(sport=sport)
+
+            def fetch_event_odds(self, event_id: str | None = None, sport: str | None = None):
+                captured['odds_sport'] = sport
+                return super().fetch_event_odds(event_id=event_id, sport=sport)
+
+        adapter = LiveProviderAdapter(config)
+        adapter.the_odds_api = _EplOddsApi(
+            events=[
+                {
+                    'id': 'evt-epl',
+                    'home_team': 'Arsenal',
+                    'away_team': 'Chelsea',
+                    'commence_time': '2026-08-20T18:45:00Z',
+                }
+            ],
+            odds_rows=[
+                {
+                    'bookmaker': 'BetRivers',
+                    'market': 'TOTAL_CORNERS_OVER',
+                    'line': '9.5',
+                    'side': 'OVER',
+                    'closing_odds': 2.1,
+                }
+            ],
+        )
+
+        rows = adapter.fetch_odds('api-football-serie-b-1')
+
+        assert rows
+        assert captured['list_sport'] == 'soccer_epl'
+        assert captured['odds_sport'] == 'soccer_epl'

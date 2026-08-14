@@ -1,0 +1,19 @@
+{
+  "calibration_method": {
+    "over_10_5": "platt",
+    "over_11_5": "isotonic",
+    "over_8_5": "isotonic",
+    "over_9_5": "platt"
+  },
+  "decision_thresholds": {
+    "minimum_probability": 0.6,
+    "minimum_confidence": 60.0,
+    "minimum_ev": 0.05,
+    "kelly_cap": 0.2,
+    "abstention_threshold": 50.0
+  },
+  "confidence_policy": {
+    "accept_threshold": 69.32447766749223,
+    "watch_threshold": 59.33682827181903
+  }
+}

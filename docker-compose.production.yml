@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  cornerlab:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    image: cornerlab:production
+    volumes:
+      - ./data:/srv/cornerlab/data
+      - ./models:/srv/cornerlab/models:ro
+      - ./reports:/srv/cornerlab/reports
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: "1"
+      CORNERLAB_APP_PASSWORD: ${CORNERLAB_APP_PASSWORD}
+      THE_ODDS_API_KEY: ${THE_ODDS_API_KEY}
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY}
+
+  nginx:
+    image: nginx:stable-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf.example:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      cornerlab:
+        condition: service_healthy
+    restart: unless-stopped

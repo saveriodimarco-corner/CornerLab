@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.stats import poisson
 
 from src.config import CONFIG
+from src.exceptions import InsufficientDataError, InvalidFeatureDataError
 
 
 class PredictionEngine:
@@ -47,22 +48,49 @@ class PredictionEngine:
     def predict(self, merged: pd.DataFrame) -> pd.DataFrame:
         """Generate probabilities for each match using deterministic Poisson-based scoring."""
         if merged.empty:
-            raise ValueError("Input data must not be empty")
+            raise InsufficientDataError("Input data must not be empty")
+
+        required_fields = ["expected_home_corner", "expected_away_corner", "expected_total_corner"]
+        for field in required_fields:
+            if field not in merged.columns:
+                raise InvalidFeatureDataError(f"Missing required expected-corner field: {field}")
 
         predictions: List[Dict[str, float]] = []
-        for _, row in merged.iterrows():
-            home_rate = min(float(CONFIG.POISSON_LIMIT), max(0.1, float(row.get("expected_home_corner", 0.0))))
-            away_rate = min(float(CONFIG.POISSON_LIMIT), max(0.1, float(row.get("expected_away_corner", 0.0))))
-            total_rate = home_rate + away_rate
+        for idx, row in merged.iterrows():
+            try:
+                home_rate = float(row["expected_home_corner"])
+                away_rate = float(row["expected_away_corner"])
+                total_rate = float(row["expected_total_corner"])
+            except (TypeError, ValueError) as exc:
+                raise InvalidFeatureDataError("Expected-corner fields must be numeric.") from exc
+
+            if not np.isfinite([home_rate, away_rate, total_rate]).all() or min(home_rate, away_rate, total_rate) < 0.0:
+                raise InvalidFeatureDataError("Expected-corner fields must be finite and non-negative.")
 
             home_probs = self._predict_distribution(home_rate, row.get("home_corners", 0.0))
             away_probs = self._predict_distribution(away_rate, row.get("away_corners", 0.0))
             total_probs = self._predict_total_distribution(total_rate, float(row.get("home_corners", 0.0)) + float(row.get("away_corners", 0.0)))
 
+            default_probability = 1.0 - self._poisson_cdf(8.5, total_rate)
+            raw_probability = row.get("predicted_probability", default_probability)
+            if pd.isna(raw_probability):
+                raw_probability = default_probability
+            raw_closing_odds = row.get("closing_odds", 2.0)
+            if pd.isna(raw_closing_odds):
+                raw_closing_odds = 2.0
+            raw_confidence = row.get("model_confidence", row.get("confidence", 0.75))
+            if pd.isna(raw_confidence):
+                raw_confidence = 0.75
+
             probs = {
-                "expected_home_corners": home_rate,
-                "expected_away_corners": away_rate,
-                "expected_total_corners": total_rate,
+                "expected_home_corner": home_rate,
+                "expected_away_corner": away_rate,
+                "expected_total_corner": total_rate,
+                "match_id": int(row.get("match_id", idx + 1)),
+                "market": str(row.get("market", "OVER 8.5")),
+                "closing_odds": float(raw_closing_odds),
+                "predicted_probability": float(np.clip(float(raw_probability), 0.0, 1.0)),
+                "model_confidence": float(np.clip(float(raw_confidence), 0.0, 1.0)),
             }
             for threshold in self._thresholds:
                 probs[f"over_{int(threshold)}"] = 1.0 - self._poisson_cdf(threshold, total_rate)

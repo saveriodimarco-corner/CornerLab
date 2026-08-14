@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CornerLab settlement job every 60 minutes
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=cornerlab-settlement.service
+
+[Install]
+WantedBy=timers.target

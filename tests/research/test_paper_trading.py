@@ -5,12 +5,14 @@ import json
 import pickle
 
 import pandas as pd
+import pytest
 from sklearn.linear_model import LogisticRegression
 
 from src.engine.feature_store import FeatureStore
 
 from src.research.paper_trading import (
     _align_feature_schema,
+    _build_odds_input,
     _load_authoritative_models,
     _model_registry_key,
     _resolve_market_probability,
@@ -19,7 +21,12 @@ from src.research.paper_trading import (
     build_live_fixture_features,
     run_paper_trading,
 )
-from src.research.observation_freeze import build_production_baseline_manifest, settle_paper_trades
+from src.research.observation_freeze import build_production_baseline_manifest, settle_paper_trades, write_model_observation_artifacts, write_performance_dashboard_artifacts
+
+
+class _DeterministicModel:
+    def predict(self, frame: pd.DataFrame):
+        return [0.7] * len(frame)
 
 
 def test_build_live_fixture_features_uses_historical_state() -> None:
@@ -144,9 +151,133 @@ def test_production_manifest_and_settlement_outputs_are_written(tmp_path: Path) 
     assert settlement["summary"]["profit_loss"] > 0
 
 
+def test_performance_dashboard_artifacts_are_deterministic_and_observational(tmp_path: Path) -> None:
+    payload = {
+        "summary": {"bankroll_start": 100.0, "final_bankroll": 113.0, "total_bets": 4, "wins": 3, "losses": 1, "hit_rate": 0.75, "profit_loss": 13.0, "roi": 0.13, "yield": 13.0 / 40.0, "max_drawdown": 0.1},
+        "settled_rows": [
+            {"settled_timestamp": "2026-08-01T12:00:00Z", "target_name": "over_9_5", "side": "OVER", "quality_tier": "TOP", "bet_result": "WIN", "stake": 10.0, "profit_loss": 10.0, "odds_at_decision": 2.0, "EV": 0.1, "confidence": 70.0, "CLV": 0.01},
+            {"settled_timestamp": "2026-08-02T12:00:00Z", "target_name": "over_9_5", "side": "OVER", "quality_tier": "BUONA", "bet_result": "WIN", "stake": 10.0, "profit_loss": 8.0, "odds_at_decision": 1.8, "EV": 0.08, "confidence": 68.0, "CLV": 0.02},
+            {"settled_timestamp": "2026-08-10T12:00:00Z", "target_name": "under_10_5", "side": "UNDER", "quality_tier": "MARGINALE", "bet_result": "LOSS", "stake": 10.0, "profit_loss": -10.0, "odds_at_decision": 2.0, "EV": -0.1, "confidence": 61.0, "CLV": -0.01},
+            {"settled_timestamp": "2026-08-11T12:00:00Z", "target_name": "under_10_5", "side": "UNDER", "quality_tier": "TOP", "bet_result": "WIN", "stake": 10.0, "profit_loss": 5.0, "odds_at_decision": 1.5, "EV": 0.05, "confidence": 72.0, "CLV": 0.0},
+            {"settled_timestamp": "2026-08-12T12:00:00Z", "target_name": "over_10_5", "side": "OVER", "quality_tier": "TOP", "bet_result": "PENDING", "stake": 10.0, "profit_loss": 0.0, "odds_at_decision": 2.0, "EV": 0.1, "confidence": 75.0, "CLV": None},
+        ],
+    }
+
+    paths = write_performance_dashboard_artifacts(payload, reports_dir=tmp_path, now=pd.Timestamp("2026-08-14T12:00:00Z"))
+    dashboard = json.loads(paths["json"].read_text(encoding="utf-8"))
+    rows = pd.read_csv(paths["csv"])
+
+    assert all(path.exists() for path in paths.values())
+    assert dashboard["settled_bets"] == 4
+    assert dashboard["pending_bets"] == 1
+    assert dashboard["periods"]["all"]["roi"] == 0.13
+    assert dashboard["periods"]["all"]["profit_loss"] == 13.0
+    assert dashboard["periods"]["all"]["win_rate"] == 0.75
+    assert dashboard["periods"]["all"]["yield"] == 13.0 / 40.0
+    assert dashboard["periods"]["all"]["final_bankroll"] == 113.0
+    assert dashboard["periods"]["all"]["max_drawdown"] == 10.0 / 118.0
+    assert dashboard["periods"]["all"]["longest_winning_streak"] == 2
+    assert dashboard["periods"]["all"]["longest_losing_streak"] == 1
+    assert len(dashboard["weekly_report"]) == 3
+    assert len(dashboard["monthly_report"]) == 1
+    assert dashboard["market_breakdown"]["over_9_5"]["total_bets"] == 2
+    assert dashboard["side_breakdown"]["OVER"]["total_bets"] == 2
+    assert dashboard["quality_breakdown"]["TOP"]["total_bets"] == 2
+    assert len(rows) == 4
+
+    empty_paths = write_performance_dashboard_artifacts({"summary": {"bankroll_start": 100.0}, "settled_rows": []}, reports_dir=tmp_path / "empty", now=pd.Timestamp("2026-08-14T12:00:00Z"))
+    empty_dashboard = json.loads(empty_paths["json"].read_text(encoding="utf-8"))
+    assert empty_dashboard["settled_bets"] == 0
+
+
+def test_model_observation_artifacts_describe_settled_records_without_mutation(tmp_path: Path) -> None:
+    settled_rows = [
+        {"fixture_id": 1, "target_name": "over_9_5", "side": "OVER", "quality_tier": "TOP", "bet_result": "WIN", "stake": 10.0, "profit_loss": 10.0, "odds_at_decision": 2.0, "predicted_probability": 0.72, "EV": 0.12, "settled_timestamp": "2026-08-01T12:00:00Z", "model_hash": "frozen"},
+        {"fixture_id": 2, "target_name": "under_9_5", "side": "UNDER", "quality_tier": "BUONA", "bet_result": "LOSS", "stake": 10.0, "profit_loss": -10.0, "odds_at_decision": 2.0, "predicted_probability": 0.62, "EV": 0.08, "settled_timestamp": "2026-08-08T12:00:00Z", "model_hash": "frozen"},
+        {"fixture_id": 3, "target_name": "over_10_5", "side": "OVER", "quality_tier": "MARGINALE", "bet_result": "WIN", "stake": 20.0, "profit_loss": 20.0, "odds_at_decision": 2.0, "predicted_probability": 0.76, "EV": 0.15, "settled_timestamp": "2026-08-15T12:00:00Z", "model_hash": "frozen"},
+        {"fixture_id": 4, "target_name": "under_10_5", "side": "UNDER", "quality_tier": "TOP", "bet_result": "PENDING", "stake": 20.0, "profit_loss": 0.0, "odds_at_decision": 2.0, "predicted_probability": 0.68, "EV": 0.10, "settled_timestamp": "2026-08-16T12:00:00Z", "model_hash": "frozen"},
+    ]
+    original = [dict(row) for row in settled_rows]
+
+    paths = write_model_observation_artifacts({"summary": {"bankroll_start": 100.0}, "settled_rows": settled_rows}, reports_dir=tmp_path)
+    observation = json.loads(paths["json"].read_text(encoding="utf-8"))
+
+    assert all(path.exists() for path in paths.values())
+    assert observation["settled_scored_bets"] == 3
+    assert observation["economic"]["profit_loss"] == 20.0
+    assert observation["economic"]["roi"] == 0.2
+    assert observation["brier_score"] == pytest.approx(((0.72 - 1.0) ** 2 + 0.62**2 + (0.76 - 1.0) ** 2) / 3)
+    assert observation["by_market"]["over_9_5"]["bets"] == 1
+    assert observation["by_side"]["OVER"]["bets"] == 2
+    assert observation["by_quality"]["TOP"]["bets"] == 1
+    assert next(bucket for bucket in observation["calibration"] if bucket["bucket"] == "0.70-0.75")["count"] == 1
+    assert observation["sample_warning"] == "INSUFFICIENT SAMPLE"
+    assert settled_rows == original
+
+
 def test_under_probability_is_complement_of_over_probability() -> None:
     assert _resolve_market_probability("TOTAL_CORNERS_OVER", "OVER", 0.62) == 0.62
     assert _resolve_market_probability("TOTAL_CORNERS_UNDER", "UNDER", 0.62) == 0.38
+
+
+def test_invalid_fixture_model_input_is_non_play_without_blocking_valid_fixture() -> None:
+    feature_frame = pd.DataFrame(
+        [
+            {"match_id": 1, "fixture_id": 1, "competition": "Serie A", "expected_total_corner": 10.0},
+            {"match_id": 2, "fixture_id": 2, "competition": "Serie A", "expected_total_corner": "bad"},
+        ]
+    )
+    confidence_frame = pd.DataFrame(
+        [
+            {"match_id": 1, "model_confidence": 0.8, "confidence_score": 80.0},
+            {"match_id": 2, "model_confidence": 0.8, "confidence_score": 80.0},
+        ]
+    )
+    validated_odds = pd.DataFrame(
+        [
+            {"match_id": 1, "bookmaker": "book", "market": "TOTAL_CORNERS_OVER", "line": "9.5", "side": "OVER", "closing_odds": 2.0},
+            {"match_id": 2, "bookmaker": "book", "market": "TOTAL_CORNERS_OVER", "line": "9.5", "side": "OVER", "closing_odds": 2.0},
+        ]
+    )
+    model_bundle = {
+        "serie_a/over_9_5": {
+            "schema": ["expected_total_corner"],
+            "model": _DeterministicModel(),
+            "artifact_path": "model.pkl",
+            "artifact_hash": "hash",
+            "model_version": "test",
+        }
+    }
+
+    rows = _build_odds_input(feature_frame, confidence_frame, validated_odds, model_bundle)
+
+    assert len(rows) == 2
+    assert rows.loc[rows["match_id"] == 1, "scoring_status"].iloc[0] == "SCORED"
+    invalid = rows.loc[rows["match_id"] == 2].iloc[0]
+    assert invalid["decision"] == "MODEL_UNAVAILABLE"
+    assert invalid["decision_reason"] == "MODEL_INPUT_FAILED"
+
+
+def test_invalid_live_fixture_is_recorded_as_non_play_without_stopping_scoring() -> None:
+    fixtures = pd.DataFrame(
+        [
+            {"fixture_id": 99, "provider_fixture_id": "fixture-99", "kickoff_utc": "bad-time", "competition": "Serie A", "season": "2026/27", "home_team": "Inter", "away_team": "Roma"},
+        ]
+    )
+    feature_frame, confidence_frame = build_live_research_features(pd.DataFrame(), fixtures)
+    validated_odds = pd.DataFrame(
+        [
+            {"match_id": 99, "bookmaker": "book", "market": "TOTAL_CORNERS_OVER", "line": "9.5", "side": "OVER", "closing_odds": 2.0},
+        ]
+    )
+    model_bundle = {"serie_a/over_9_5": {"schema": ["expected_total_corner"], "model": _DeterministicModel(), "artifact_path": "model.pkl", "artifact_hash": "hash", "model_version": "test"}}
+
+    rows = _build_odds_input(feature_frame, confidence_frame, validated_odds, model_bundle, invalid_fixtures=feature_frame.attrs["invalid_fixtures"])
+
+    assert len(rows) == 1
+    assert rows.iloc[0]["decision"] == "MODEL_UNAVAILABLE"
+    assert rows.iloc[0]["decision"] != "PLAY"
+    assert rows.iloc[0]["decision_reason"] == "MODEL_INPUT_FAILED"
 
 
 def test_model_registry_resolves_by_competition_and_target(tmp_path: Path) -> None:

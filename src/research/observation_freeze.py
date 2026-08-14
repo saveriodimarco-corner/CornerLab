@@ -74,6 +74,7 @@ def build_production_baseline_manifest(base_dir: Path | str | None = None, outpu
         }
 
     manifest = {
+		"release_version": "cornerlab-serie-a-v1.1",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "git_commit": git_commit,
         "model_artifacts": model_artifacts,
@@ -528,6 +529,248 @@ def _write_settlement_outputs(payload: dict[str, Any], reports_dir: Path, data_d
     summary = payload.get("summary", _empty_settlement_payload(100.0)["summary"])
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=True), encoding="utf-8")
     summary_md_path.write_text(_build_performance_markdown(payload), encoding="utf-8")
+    write_performance_dashboard_artifacts(payload, reports_dir=reports_dir)
+    write_model_observation_artifacts(payload, reports_dir=reports_dir)
+
+
+def write_model_observation_artifacts(payload: dict[str, Any], reports_dir: Path) -> dict[str, Path]:
+    """Write descriptive model-performance artifacts from canonical settled trades."""
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    json_path = reports_dir / "model_observation_current.json"
+    markdown_path = reports_dir / "model_observation_summary.md"
+    settled = pd.DataFrame(payload.get("settled_rows", []))
+    if settled.empty:
+        settled = pd.DataFrame(columns=["target_name", "side", "quality_tier", "bet_result", "stake", "profit_loss", "odds_at_decision", "predicted_probability", "EV", "settled_timestamp"])
+    observation = _build_model_observation(settled, bankroll_start=float(payload.get("summary", {}).get("bankroll_start", 100.0)))
+    json_path.write_text(json.dumps(observation, indent=2, ensure_ascii=True, default=str), encoding="utf-8")
+    markdown_path.write_text(_build_model_observation_markdown(observation), encoding="utf-8")
+    return {"json": json_path, "summary": markdown_path}
+
+
+def _build_model_observation(frame: pd.DataFrame, bankroll_start: float) -> dict[str, Any]:
+    table = frame.copy()
+    table["bet_result"] = table.get("bet_result", pd.Series("", index=table.index)).astype(str).str.upper()
+    table["stake"] = pd.to_numeric(table.get("stake", pd.Series(0.0, index=table.index)), errors="coerce").fillna(0.0)
+    table["profit_loss"] = pd.to_numeric(table.get("profit_loss", pd.Series(0.0, index=table.index)), errors="coerce").fillna(0.0)
+    table["predicted_probability"] = pd.to_numeric(table.get("predicted_probability", pd.Series(np.nan, index=table.index)), errors="coerce")
+    table["odds_at_decision"] = pd.to_numeric(table.get("odds_at_decision", pd.Series(np.nan, index=table.index)), errors="coerce")
+    table["EV"] = pd.to_numeric(table.get("EV", pd.Series(np.nan, index=table.index)), errors="coerce")
+    settled_bets = table.loc[table["bet_result"].isin({"WIN", "LOSS"})].copy()
+    settled_bets["observed_outcome"] = settled_bets["bet_result"].map({"WIN": 1.0, "LOSS": 0.0})
+    supported = {"over_9_5", "under_9_5", "over_10_5", "under_10_5"}
+    settled_bets = settled_bets.loc[settled_bets.get("target_name", pd.Series("", index=settled_bets.index)).astype(str).isin(supported)].copy()
+    sample_size = int(len(settled_bets))
+    sample_label = "INSUFFICIENT SAMPLE" if sample_size < 20 else "VERY EARLY SIGNAL" if sample_size < 50 else "EARLY OBSERVATION" if sample_size < 100 else "MEANINGFUL OBSERVATION"
+    total_stake = float(settled_bets["stake"].sum())
+    profit_loss = float(settled_bets["profit_loss"].sum())
+    brier_rows = settled_bets.loc[settled_bets["predicted_probability"].notna()].copy()
+    brier = float(np.mean(np.square(brier_rows["predicted_probability"] - brier_rows["observed_outcome"]))) if not brier_rows.empty else float("nan")
+    return {
+        "source": "reports/paper_trading_settled.csv",
+        "sample_warning": sample_label,
+        "settled_scored_bets": sample_size,
+        "voids": int((table["bet_result"] == "VOID").sum()),
+        "pending": int((table["bet_result"] == "PENDING").sum()),
+        "economic": {
+            "bets": sample_size,
+            "wins": int((settled_bets["bet_result"] == "WIN").sum()),
+            "losses": int((settled_bets["bet_result"] == "LOSS").sum()),
+            "stake": total_stake,
+            "profit_loss": profit_loss,
+            "roi": float(profit_loss / bankroll_start) if bankroll_start else 0.0,
+            "yield": float(profit_loss / total_stake) if total_stake else 0.0,
+            "average_odds": float(settled_bets["odds_at_decision"].mean()) if settled_bets["odds_at_decision"].notna().any() else float("nan"),
+            "bankroll": float(bankroll_start + profit_loss),
+            "max_drawdown": _observation_drawdown(settled_bets, bankroll_start),
+        },
+        "brier_score": brier,
+        "calibration": _observation_calibration(settled_bets),
+        "by_market": _observation_group(settled_bets, "target_name"),
+        "by_side": _observation_group(settled_bets, "side"),
+        "by_quality": _observation_group(settled_bets, "quality_tier"),
+        "by_month": _observation_periods(settled_bets, "M"),
+        "by_week": _observation_periods(settled_bets, "W-MON"),
+    }
+
+
+def _observation_drawdown(frame: pd.DataFrame, bankroll_start: float) -> float:
+    if frame.empty:
+        return 0.0
+    cumulative = bankroll_start + frame["profit_loss"].cumsum()
+    peak = pd.concat([pd.Series([bankroll_start]), cumulative], ignore_index=True).cummax().iloc[1:]
+    return float(((peak - cumulative) / peak.replace(0.0, np.nan)).fillna(0.0).max())
+
+
+def _observation_group(frame: pd.DataFrame, column: str) -> dict[str, dict[str, Any]]:
+    if frame.empty or column not in frame.columns:
+        return {}
+    groups: dict[str, dict[str, Any]] = {}
+    for key, group in frame.groupby(frame[column].astype(str), dropna=False):
+        if not key or key == "nan":
+            continue
+        stake = float(group["stake"].sum())
+        profit_loss = float(group["profit_loss"].sum())
+        probabilities = group["predicted_probability"].dropna()
+        groups[str(key)] = {
+            "bets": int(len(group)),
+            "hit_rate": float((group["bet_result"] == "WIN").mean()),
+            "roi": float(profit_loss / 100.0),
+            "profit_loss": profit_loss,
+            "brier": float(np.mean(np.square(probabilities - group.loc[probabilities.index, "observed_outcome"]))) if not probabilities.empty else float("nan"),
+            "average_predicted_probability": float(probabilities.mean()) if not probabilities.empty else float("nan"),
+            "average_odds": float(group["odds_at_decision"].mean()) if group["odds_at_decision"].notna().any() else float("nan"),
+            "average_ev": float(group["EV"].mean()) if group["EV"].notna().any() else float("nan"),
+            "yield": float(profit_loss / stake) if stake else 0.0,
+        }
+    return groups
+
+
+def _observation_calibration(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    buckets = [(0.50, 0.55, "0.50-0.55"), (0.55, 0.60, "0.55-0.60"), (0.60, 0.65, "0.60-0.65"), (0.65, 0.70, "0.65-0.70"), (0.70, 0.75, "0.70-0.75"), (0.75, float("inf"), "0.75+")]
+    rows: list[dict[str, Any]] = []
+    for lower, upper, label in buckets:
+        probabilities = frame["predicted_probability"]
+        mask = probabilities.ge(lower) & (probabilities.lt(upper) if np.isfinite(upper) else probabilities.ge(lower))
+        group = frame.loc[mask & probabilities.notna()]
+        observed = float(group["observed_outcome"].mean()) if not group.empty else float("nan")
+        average = float(group["predicted_probability"].mean()) if not group.empty else float("nan")
+        rows.append({"bucket": label, "count": int(len(group)), "average_predicted_probability": average, "observed_win_frequency": observed, "calibration_gap": float(observed - average) if np.isfinite(observed) and np.isfinite(average) else float("nan")})
+    return rows
+
+
+def _observation_periods(frame: pd.DataFrame, frequency: str) -> list[dict[str, Any]]:
+    if frame.empty or "settled_timestamp" not in frame.columns:
+        return []
+    timestamp = pd.to_datetime(frame["settled_timestamp"], errors="coerce", utc=True)
+    rows: list[dict[str, Any]] = []
+    for period, group in frame.assign(_period=timestamp.dt.to_period(frequency)).groupby("_period", sort=False):
+        if str(period) == "NaT":
+            continue
+        rows.append({"period": str(period), **_observation_group(group.assign(target_name="all"), "target_name").get("all", {})})
+    return rows
+
+
+def _build_model_observation_markdown(observation: dict[str, Any]) -> str:
+    economic = observation["economic"]
+    return "\n".join([
+        "# Model Observation Summary",
+        "",
+        f"- Sample: {observation['sample_warning']} ({observation['settled_scored_bets']} settled scored bets)",
+        f"- ROI: {float(economic['roi']):.2%}",
+        f"- P/L: {float(economic['profit_loss']):.2f}",
+        f"- Brier score: {float(observation['brier_score']):.4f}" if np.isfinite(observation["brier_score"]) else "- Brier score: n/a",
+    ]) + "\n"
+
+
+def write_performance_dashboard_artifacts(
+    payload: dict[str, Any], reports_dir: Path, now: pd.Timestamp | None = None
+) -> dict[str, Path]:
+    """Write dashboard-ready observation artifacts from already-settled paper trades."""
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    dashboard_json_path = reports_dir / "performance_dashboard_current.json"
+    dashboard_csv_path = reports_dir / "performance_dashboard_current.csv"
+    dashboard_md_path = reports_dir / "performance_dashboard_summary.md"
+
+    rows = pd.DataFrame(payload.get("settled_rows", []))
+    if rows.empty:
+        rows = pd.DataFrame(columns=["settled_timestamp", "target_name", "side", "quality_tier", "bet_result", "stake", "profit_loss"])
+    rows = rows.copy()
+    rows["bet_result"] = rows.get("bet_result", pd.Series("", index=rows.index)).astype(str).str.upper()
+    rows["settled_timestamp"] = pd.to_datetime(rows.get("settled_timestamp", pd.Series(pd.NaT, index=rows.index)), errors="coerce", utc=True)
+    settled = rows.loc[rows["bet_result"].isin({"WIN", "LOSS"})].copy()
+    settled = settled.sort_values("settled_timestamp", kind="stable").reset_index(drop=True)
+    reference_time = pd.Timestamp(now if now is not None else pd.Timestamp.now(tz="UTC"))
+    if reference_time.tzinfo is None:
+        reference_time = reference_time.tz_localize("UTC")
+
+    periods = {
+        "7d": settled.loc[settled["settled_timestamp"] >= reference_time - pd.Timedelta(days=7)].copy(),
+        "current_month": settled.loc[(settled["settled_timestamp"].dt.year == reference_time.year) & (settled["settled_timestamp"].dt.month == reference_time.month)].copy(),
+        "season": settled.loc[settled["settled_timestamp"] >= pd.Timestamp(year=reference_time.year if reference_time.month >= 8 else reference_time.year - 1, month=8, day=1, tz="UTC")].copy(),
+        "all": settled,
+    }
+    dashboard = {
+        "generated_at": reference_time.isoformat(),
+        "summary": payload.get("summary", _empty_settlement_payload(100.0)["summary"]),
+        "periods": {name: _dashboard_summary(frame, bankroll_start=float(payload.get("summary", {}).get("bankroll_start", 100.0))) for name, frame in periods.items()},
+        "market_breakdown": _group_summary(settled, "target_name"),
+        "side_breakdown": _group_summary(settled, "side"),
+        "quality_breakdown": _group_summary(settled, "quality_tier"),
+        "weekly_report": _dashboard_time_breakdown(settled, "W-MON"),
+        "monthly_report": _dashboard_time_breakdown(settled, "M"),
+        "settled_bets": int(len(settled)),
+        "pending_bets": int((rows["bet_result"] == "PENDING").sum()),
+    }
+    dashboard_json_path.write_text(json.dumps(dashboard, indent=2, ensure_ascii=True, default=str), encoding="utf-8")
+    settled.to_csv(dashboard_csv_path, index=False)
+    dashboard_md_path.write_text(_build_performance_dashboard_markdown(dashboard), encoding="utf-8")
+    return {"json": dashboard_json_path, "csv": dashboard_csv_path, "summary": dashboard_md_path}
+
+
+def _dashboard_summary(frame: pd.DataFrame, bankroll_start: float) -> dict[str, Any]:
+    if frame.empty:
+        return {"total_bets": 0, "wins": 0, "losses": 0, "profit_loss": 0.0, "roi": 0.0, "yield": 0.0, "win_rate": 0.0, "final_bankroll": float(bankroll_start), "max_drawdown": 0.0, "longest_winning_streak": 0, "longest_losing_streak": 0}
+    frame = frame.copy().sort_values("settled_timestamp", kind="stable")
+    frame["stake"] = pd.to_numeric(frame.get("stake", pd.Series(0.0, index=frame.index)), errors="coerce").fillna(0.0)
+    frame["profit_loss"] = pd.to_numeric(frame.get("profit_loss", pd.Series(0.0, index=frame.index)), errors="coerce").fillna(0.0)
+    bankroll_curve = bankroll_start + frame["profit_loss"].cumsum()
+    running_peak = pd.concat([pd.Series([bankroll_start]), bankroll_curve], ignore_index=True).cummax().iloc[1:]
+    drawdown = ((running_peak - bankroll_curve) / running_peak.replace(0.0, np.nan)).fillna(0.0)
+    results = frame["bet_result"].tolist()
+    return {
+        "total_bets": int(len(frame)),
+        "wins": int((frame["bet_result"] == "WIN").sum()),
+        "losses": int((frame["bet_result"] == "LOSS").sum()),
+        "profit_loss": float(frame["profit_loss"].sum()),
+        "roi": float(frame["profit_loss"].sum() / bankroll_start) if bankroll_start else 0.0,
+        "yield": float(frame["profit_loss"].sum() / frame["stake"].sum()) if float(frame["stake"].sum()) else 0.0,
+        "win_rate": float((frame["bet_result"] == "WIN").mean()),
+        "final_bankroll": float(bankroll_curve.iloc[-1]),
+        "max_drawdown": float(drawdown.max()),
+        "longest_winning_streak": _longest_streak(results, "WIN"),
+        "longest_losing_streak": _longest_streak(results, "LOSS"),
+    }
+
+
+def _longest_streak(results: list[str], outcome: str) -> int:
+    longest = 0
+    current = 0
+    for result in results:
+        current = current + 1 if result == outcome else 0
+        longest = max(longest, current)
+    return longest
+
+
+def _dashboard_time_breakdown(frame: pd.DataFrame, frequency: str) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    timestamp = pd.to_datetime(frame["settled_timestamp"], errors="coerce", utc=True)
+    records: list[dict[str, Any]] = []
+    for period, group in frame.assign(_period=timestamp.dt.to_period(frequency)).groupby("_period", sort=False):
+        item = _dashboard_summary(group, bankroll_start=100.0)
+        item["period"] = str(period)
+        records.append(item)
+    return records
+
+
+def _build_performance_dashboard_markdown(dashboard: dict[str, Any]) -> str:
+    summary = dashboard["summary"]
+    lines = [
+        "# Performance Dashboard",
+        "",
+        f"- Settled bets: {dashboard['settled_bets']}",
+        f"- Pending bets: {dashboard['pending_bets']}",
+        f"- ROI: {float(summary.get('roi', 0.0)):.2%}",
+        f"- Profit/Loss: {float(summary.get('profit_loss', 0.0)):.2f}",
+        f"- Win rate: {float(summary.get('hit_rate', 0.0)):.2%}",
+        f"- Max drawdown: {float(summary.get('max_drawdown', 0.0)):.2%}",
+        f"- Final bankroll: {float(summary.get('final_bankroll', summary.get('bankroll_start', 100.0))):.2f}",
+        "",
+        "## Period Views",
+    ]
+    for name, period_summary in dashboard["periods"].items():
+        lines.append(f"- {name}: {int(period_summary['total_bets'])} settled bets, ROI {float(period_summary['roi']):.2%}, P/L {float(period_summary['profit_loss']):.2f}")
+    return "\n".join(lines) + "\n"
 
 
 def _build_performance_markdown(payload: dict[str, Any]) -> str:

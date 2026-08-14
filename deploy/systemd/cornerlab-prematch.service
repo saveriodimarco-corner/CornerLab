@@ -1,0 +1,17 @@
+[Unit]
+Description=CornerLab prematch automation job
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=cornerlab
+Group=cornerlab
+WorkingDirectory=/srv/cornerlab
+EnvironmentFile=/etc/cornerlab/automation.env
+ExecStart=/usr/bin/docker compose -f /srv/cornerlab/docker-compose.production.yml run --rm --no-deps cornerlab python3 scripts/run_prematch_job.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/srv/cornerlab/data /srv/cornerlab/reports

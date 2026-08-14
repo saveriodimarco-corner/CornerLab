@@ -5,6 +5,7 @@ import pytest
 
 from src.engine.backtest import Backtest
 from src.engine.prediction_engine import PredictionEngine
+from src.exceptions import InvalidFeatureDataError
 
 
 @pytest.fixture
@@ -37,14 +38,22 @@ def test_predict_returns_probabilities_and_expected_values(merged_inputs: pd.Dat
     engine = PredictionEngine()
     predictions = engine.predict(merged_inputs)
 
-    expected_columns = {"expected_home_corners", "expected_away_corners", "expected_total_corners"}
+    expected_columns = {"expected_home_corner", "expected_away_corner", "expected_total_corner"}
     for threshold in [8.5, 9.5, 10.5, 11.5]:
         expected_columns.add(f"over_{int(threshold)}")
         expected_columns.add(f"under_{int(threshold)}")
 
     assert expected_columns.issubset(set(predictions.columns))
+    assert {"match_id", "market", "closing_odds", "predicted_probability", "model_confidence"}.issubset(set(predictions.columns))
     assert len(predictions) == len(merged_inputs)
     assert predictions["over_8"].between(0.0, 1.0).all()
+
+
+def test_invalid_required_feature_raises_domain_error(merged_inputs: pd.DataFrame):
+    merged_inputs.loc[0, "expected_total_corner"] = "bad"
+
+    with pytest.raises(InvalidFeatureDataError, match="must be numeric"):
+        PredictionEngine().predict(merged_inputs)
 
 
 def test_backtest_summarizes_metrics(merged_inputs: pd.DataFrame):

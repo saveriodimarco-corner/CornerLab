@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 
 from src.data.normalizer import normalize_team_name
 from src.data.provenance import verify_provenance
+from src.data.quality import validate_quality_rows
 from src.engine.feature_store import FeatureStore
 
 
@@ -23,6 +24,18 @@ OFFICIAL_SOURCE_FILES = {
     "2023/24": "data/raw/football_data/I1_2324.csv",
     "2024/25": "data/raw/football_data/I1_2425.csv",
     "2025/26": "data/raw/football_data/I1_2526.csv",
+}
+
+SERIE_B_SOURCE_FILES = {
+    "2023/24": "data/raw/football_data/I2_2324.csv",
+    "2024/25": "data/raw/football_data/I2_2425.csv",
+    "2025/26": "data/raw/football_data/I2_2526.csv",
+}
+
+PREMIER_LEAGUE_SOURCE_FILES = {
+    "2023/24": "data/raw/football_data/E0_2324.csv",
+    "2024/25": "data/raw/football_data/E0_2425.csv",
+    "2025/26": "data/raw/football_data/E0_2526.csv",
 }
 
 CACHE_VERSION = "historical-foundation-v1"
@@ -120,6 +133,15 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
 
     verify_provenance(base_dir)
 
+    try:
+        build_serie_b_historical_database(base_dir)
+    except FileNotFoundError:
+        pass
+    try:
+        build_premier_league_historical_database(base_dir)
+    except FileNotFoundError:
+        pass
+
     cache_artifacts = [
         csv_path,
         canonical_path,
@@ -153,12 +175,59 @@ def build_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path,
     return csv_path, canonical_path, db_path, research_path, validation_path
 
 
-def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
+def build_serie_b_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path, Path]:
     base_dir = base_dir or Path.cwd()
-    repo_root = Path(__file__).resolve().parents[2]
+    raw_dir = base_dir / "data" / "raw"
+    processed_dir = base_dir / "data" / "processed"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    matches_df = generate_serie_b_matches(base_dir)
+    csv_path = raw_dir / "serie_b_matches.csv"
+    parquet_path = processed_dir / "serie_b_matches.parquet"
+    db_path = raw_dir / "serie_b_historical.db"
+
+    matches_df.to_csv(csv_path, index=False)
+    matches_df.to_parquet(parquet_path, index=False)
+    create_historical_sqlite(matches_df, db_path)
+    return csv_path, parquet_path, db_path
+
+
+def build_premier_league_historical_database(base_dir: Path | None = None) -> Tuple[Path, Path, Path]:
+    base_dir = base_dir or Path.cwd()
+    raw_dir = base_dir / "data" / "raw"
+    processed_dir = base_dir / "data" / "processed"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    matches_df = generate_premier_league_matches(base_dir)
+    csv_path = raw_dir / "premier_league_matches.csv"
+    parquet_path = processed_dir / "premier_league_matches.parquet"
+    db_path = raw_dir / "premier_league_historical.db"
+
+    matches_df.to_csv(csv_path, index=False)
+    matches_df.to_parquet(parquet_path, index=False)
+    create_historical_sqlite(matches_df, db_path)
+    return csv_path, parquet_path, db_path
+
+
+def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
+    return _generate_matches_for_competition(base_dir=base_dir, competition_name="Serie A", source_files=OFFICIAL_SOURCE_FILES, division_code="I1")
+
+
+def generate_serie_b_matches(base_dir: Path | None = None) -> pd.DataFrame:
+    return _generate_matches_for_competition(base_dir=base_dir, competition_name="Serie B", source_files=SERIE_B_SOURCE_FILES, division_code="I2")
+
+
+def generate_premier_league_matches(base_dir: Path | None = None) -> pd.DataFrame:
+    return _generate_matches_for_competition(base_dir=base_dir, competition_name="Premier League", source_files=PREMIER_LEAGUE_SOURCE_FILES, division_code="E0")
+
+
+def _generate_matches_for_competition(base_dir: Path | None, competition_name: str, source_files: Dict[str, str], division_code: str) -> pd.DataFrame:
+    base_dir = base_dir or Path.cwd()
     rows: List[Dict[str, Any]] = []
     for season in ["2023/24", "2024/25", "2025/26"]:
-        source_path = resolve_source_path(base_dir, season)
+        source_path = resolve_source_path(base_dir, season, source_files=source_files)
         if not source_path.exists():
             raise FileNotFoundError(f"Missing official source file: {source_path}")
 
@@ -187,7 +256,7 @@ def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
                 {
                     "date": match_date.strftime("%Y-%m-%d"),
                     "season": season,
-                    "competition": "Serie A",
+                    "competition": competition_name,
                     "home_team": home_team,
                     "away_team": away_team,
                     "home_goals": home_goals,
@@ -197,16 +266,19 @@ def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
                     "total_corners": home_corners + away_corners,
                     "source": "football-data-csv",
                     "source_file_name": source_path.name,
-                    "source_url": f"https://www.football-data.co.uk/mmz4281/{season.split('/')[0]}{season.split('/')[1]}/I1.csv",
+                    "source_url": f"https://www.football-data.co.uk/mmz4281/{season.split('/')[0]}{season.split('/')[1]}/{division_code}.csv",
                     "import_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 }
             )
 
-        if len(season_rows) != 380:
-            raise ValueError(f"Expected 380 rows for {season}, received {len(season_rows)}")
+        if len(season_rows) < 300:
+            raise ValueError(f"Expected at least 300 rows for {competition_name} {season}, received {len(season_rows)}")
         rows.extend(season_rows)
 
     matches_df = pd.DataFrame(rows)
+    quality_validation = validate_quality_rows(rows, source="historical")
+    if quality_validation["errors"]:
+        raise ValueError(f"Historical data quality validation failed: {quality_validation['errors'][0]}")
     matches_df = matches_df.sort_values(["season", "date", "home_team", "away_team"]).reset_index(drop=True)
     matches_df["fixture_id"] = range(1, len(matches_df) + 1)
     matches_df["row_hash"] = matches_df.apply(lambda row: compute_row_hash(row), axis=1)
@@ -215,11 +287,12 @@ def generate_serie_a_matches(base_dir: Path | None = None) -> pd.DataFrame:
     return matches_df
 
 
-def resolve_source_path(base_dir: Path, season: str) -> Path:
+def resolve_source_path(base_dir: Path, season: str, source_files: Dict[str, str] | None = None) -> Path:
     repo_root = Path(__file__).resolve().parents[2]
+    sources = source_files or OFFICIAL_SOURCE_FILES
     candidates = [
-        base_dir / OFFICIAL_SOURCE_FILES[season],
-        repo_root / OFFICIAL_SOURCE_FILES[season],
+        base_dir / sources[season],
+        repo_root / sources[season],
     ]
     for candidate in candidates:
         if candidate.exists():

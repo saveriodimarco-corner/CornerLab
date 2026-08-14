@@ -8,6 +8,12 @@ class NormalizationError(ValueError):
     """Raised when a row cannot be normalized safely."""
 
 
+TEAM_NAME_ALIASES = {
+    "inter": ["inter milan", "internazionale"],
+    "atalanta": ["atalanta bc"],
+}
+
+
 def normalize_date(value: Any) -> str:
     if value is None:
         raise NormalizationError("date is required")
@@ -34,6 +40,11 @@ def normalize_team_name(value: Any) -> str:
     cleaned = " ".join(value.strip().split())
     if not cleaned:
         raise NormalizationError("team name is required")
+
+    lookup = cleaned.casefold()
+    for canonical, aliases in TEAM_NAME_ALIASES.items():
+        if lookup == canonical or lookup in aliases:
+            return canonical.title()
     return cleaned.title()
 
 

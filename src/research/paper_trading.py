@@ -16,6 +16,7 @@ from scipy.stats import poisson
 
 from src.data.odds_validator import validate_odds_dataframe
 from src.engine.feature_store import FeatureStore
+from src.exceptions import InvalidFeatureDataError, InvalidMatchDataError
 from src.research.advanced_features import build_advanced_feature_dataset
 from src.research.confidence_engine import DEFAULT_POLICY, apply_abstention_rules, build_confidence_features, compute_confidence_components
 from src.research.decision_engine import build_decision_report
@@ -85,7 +86,13 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
     feature_frame, confidence_frame = build_live_research_features(historical_matches, fixtures)
     model_bundle = _load_authoritative_models(base_dir)
     scored_confidence_frame = _build_confidence_frame(feature_frame, confidence_frame)
-    odds_input = _build_odds_input(feature_frame, scored_confidence_frame, validated_odds, model_bundle)
+    odds_input = _build_odds_input(
+        feature_frame,
+        scored_confidence_frame,
+        validated_odds,
+        model_bundle,
+        invalid_fixtures=feature_frame.attrs.get("invalid_fixtures", {}),
+    )
 
     if odds_input.empty:
         raise ValueError("No paper-trading rows could be built from the live odds")
@@ -287,7 +294,16 @@ def _model_registry_key(competition_slug: str, target_name: str) -> str:
 
 def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     live_rows: list[pd.DataFrame] = []
+    invalid_fixtures: dict[int, dict[str, Any]] = {}
     for _, fixture in fixtures.sort_values(["kickoff_utc", "fixture_id"]).iterrows():
+        try:
+            fixture_id = _validate_live_fixture(fixture)
+        except InvalidMatchDataError as exc:
+            fixture_id_value = pd.to_numeric(fixture.get("fixture_id"), errors="coerce")
+            if pd.notna(fixture_id_value):
+                fixture_id = int(fixture_id_value)
+                invalid_fixtures[fixture_id] = {**fixture.to_dict(), "fixture_id": fixture_id, "match_id": fixture_id, "model_input_error": str(exc)}
+            continue
         combined_matches = historical_matches.copy()
         live_match = pd.DataFrame(
             [
@@ -306,8 +322,8 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
                     "source_file_name": "paper_trading_live_fixture",
                     "source_url": "paper_trading_live_fixture",
                     "import_date": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                    "fixture_id": int(fixture["fixture_id"]),
-                    "row_hash": f"live-{int(fixture['fixture_id'])}",
+                    "fixture_id": fixture_id,
+                    "row_hash": f"live-{fixture_id}",
                 }
             ]
         )
@@ -321,7 +337,6 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
             combined_matches.to_parquet(combined_path, index=False)
             advanced_features = build_advanced_feature_dataset(base_dir=temp_dir, output_dir=temp_dir)
 
-        fixture_id = int(fixture["fixture_id"])
         fixture_competition = str(fixture.get("competition", "Serie A"))
         fixture_home = str(fixture.get("home_team", ""))
         fixture_away = str(fixture.get("away_team", ""))
@@ -341,11 +356,32 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
         live_rows.append(live_feature_row.iloc[[0]].copy())
 
     if not live_rows:
-        return pd.DataFrame(), pd.DataFrame()
+        feature_frame = pd.DataFrame()
+        feature_frame.attrs["invalid_fixtures"] = invalid_fixtures
+        return feature_frame, pd.DataFrame()
 
     feature_frame = pd.concat(live_rows, ignore_index=True)
+    feature_frame.attrs["invalid_fixtures"] = invalid_fixtures
     confidence_frame = feature_frame.copy()
     return feature_frame, confidence_frame
+
+
+def _validate_live_fixture(fixture: pd.Series) -> int:
+    fixture_id = pd.to_numeric(fixture.get("fixture_id"), errors="coerce")
+    if pd.isna(fixture_id):
+        raise InvalidMatchDataError("Fixture ID must be numeric.")
+    if not str(fixture.get("provider_fixture_id", "")).strip():
+        raise InvalidMatchDataError("Fixture provider identity must be present.")
+    if not str(fixture.get("competition", "")).strip():
+        raise InvalidMatchDataError("Fixture competition must be present.")
+    if pd.isna(pd.to_datetime(fixture.get("kickoff_utc"), utc=True, errors="coerce")):
+        raise InvalidMatchDataError("Fixture kickoff must be a valid timestamp.")
+    for field in ["home_team", "away_team"]:
+        if not str(fixture.get(field, "")).strip():
+            raise InvalidMatchDataError("Fixture team names must be present.")
+    if str(fixture.get("home_team")).strip().casefold() == str(fixture.get("away_team")).strip().casefold():
+        raise InvalidMatchDataError("Fixture home and away team must differ.")
+    return int(fixture_id)
 
 
 def _extract_model_schema(model: Any) -> list[str]:
@@ -488,13 +524,24 @@ def _build_confidence_frame(feature_frame: pd.DataFrame, confidence_frame: pd.Da
     return scored
 
 
-def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFrame, validated_odds: pd.DataFrame, model_bundle: dict[str, dict[str, Any]]) -> pd.DataFrame:
+def _build_odds_input(
+    feature_frame: pd.DataFrame,
+    confidence_frame: pd.DataFrame,
+    validated_odds: pd.DataFrame,
+    model_bundle: dict[str, dict[str, Any]],
+    invalid_fixtures: dict[int, dict[str, Any]] | None = None,
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    fixture_lookup = feature_frame.set_index("match_id")
+    fixture_lookup = feature_frame.set_index("match_id") if "match_id" in feature_frame.columns else pd.DataFrame()
+    invalid_fixtures = invalid_fixtures or {}
 
     for row_order, (_, odds_row) in enumerate(validated_odds.iterrows()):
         match_id = int(odds_row["match_id"])
+        line = str(odds_row["line"]).strip()
+        target_name = _target_name_for_market_line(str(odds_row["market"]), line)
         if match_id not in fixture_lookup.index:
+            if match_id in invalid_fixtures:
+                rows.append(_build_unavailable_row(pd.Series(invalid_fixtures[match_id]), odds_row, pd.Series(dtype=object), reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
             continue
 
         fixture_row = fixture_lookup.loc[match_id]
@@ -503,12 +550,10 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
             continue
         confidence_row = confidence_rows.iloc[0]
 
-        line = str(odds_row["line"]).strip()
         if line not in LINE_TO_PROBABILITY_COLUMN:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="UNSUPPORTED_MARKET", row_order=row_order, target_name=None))
             continue
 
-        target_name = _target_name_for_market_line(str(odds_row["market"]), line)
         if target_name is None:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="UNSUPPORTED_MARKET", row_order=row_order, target_name=None))
             continue
@@ -520,7 +565,11 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
             continue
 
         bundle = model_bundle[registry_key]
-        live_feature_frame = pd.DataFrame([feature_row_to_model_input(fixture_row, target_name)])
+        try:
+            live_feature_frame = pd.DataFrame([feature_row_to_model_input(fixture_row, target_name)])
+        except InvalidFeatureDataError:
+            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
+            continue
         expected_features = bundle["schema"]
         if not expected_features:
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
@@ -528,6 +577,14 @@ def _build_odds_input(feature_frame: pd.DataFrame, confidence_frame: pd.DataFram
 
         schema_match, aligned_frame = _align_feature_schema(live_feature_frame, expected_features)
         if not schema_match:
+            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
+            continue
+        try:
+            feature_values = aligned_frame.to_numpy(dtype=float)
+        except (TypeError, ValueError):
+            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
+            continue
+        if aligned_frame.isna().any().any() or not np.isfinite(feature_values).all():
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
             continue
 
@@ -635,6 +692,8 @@ def _predict_with_loaded_model(model: Any, aligned_frame: pd.DataFrame) -> np.nd
 def feature_row_to_model_input(feature_row: pd.Series, target_name: str) -> dict[str, Any]:
     target_name = str(target_name)
     model_input = feature_row.to_dict()
+    if not model_input:
+        raise InvalidFeatureDataError("Live fixture has no model features.")
     if target_name == "over_9_5":
         return model_input
     if target_name == "over_10_5":

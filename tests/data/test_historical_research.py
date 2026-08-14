@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.build_research_foundation import main as build_research_foundation
+from src.data.historical_foundation import build_premier_league_historical_database, build_serie_b_historical_database
 
 
 def test_historical_research_pipeline(tmp_path, monkeypatch) -> None:
@@ -59,3 +60,53 @@ def test_historical_research_cache_reuses_artifacts(tmp_path, monkeypatch) -> No
 
     assert second_metadata["cache_status"] == "cache_hit"
     assert second_metadata["fingerprint"] == first_metadata["fingerprint"]
+
+
+def test_serie_b_historical_database_builds_separate_artifacts(tmp_path) -> None:
+    football_data_dir = tmp_path / "data" / "raw" / "football_data"
+    football_data_dir.mkdir(parents=True, exist_ok=True)
+    header = "Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HC,AC\n"
+
+    for season_code, year in [("2324", 2023), ("2425", 2024), ("2526", 2025)]:
+        rows = [header]
+        for idx in range(300):
+            month = (idx % 9) + 1
+            day = (idx % 27) + 1
+            match_year = year if month >= 7 else year + 1
+            rows.append(f"I2,{day:02d}/{month:02d}/{match_year},19:30,Home{idx},Away{idx},1,0,H,{idx % 8},{(idx + 2) % 8}\n")
+        (football_data_dir / f"I2_{season_code}.csv").write_text("".join(rows), encoding="utf-8")
+
+    csv_path, parquet_path, db_path = build_serie_b_historical_database(tmp_path)
+
+    assert csv_path.exists()
+    assert parquet_path.exists()
+    assert db_path.exists()
+
+    frame = pd.read_parquet(parquet_path)
+    assert len(frame) == 900
+    assert set(frame["competition"].unique()) == {"Serie B"}
+
+
+def test_premier_league_historical_database_builds_separate_artifacts(tmp_path) -> None:
+    football_data_dir = tmp_path / "data" / "raw" / "football_data"
+    football_data_dir.mkdir(parents=True, exist_ok=True)
+    header = "Div,Date,Time,HomeTeam,AwayTeam,FTHG,FTAG,FTR,HC,AC\n"
+
+    for season_code, year in [("2324", 2023), ("2425", 2024), ("2526", 2025)]:
+        rows = [header]
+        for idx in range(300):
+            month = (idx % 9) + 1
+            day = (idx % 27) + 1
+            match_year = year if month >= 7 else year + 1
+            rows.append(f"E0,{day:02d}/{month:02d}/{match_year},20:00,Home{idx},Away{idx},1,0,H,{idx % 10},{(idx + 3) % 10}\n")
+        (football_data_dir / f"E0_{season_code}.csv").write_text("".join(rows), encoding="utf-8")
+
+    csv_path, parquet_path, db_path = build_premier_league_historical_database(tmp_path)
+
+    assert csv_path.exists()
+    assert parquet_path.exists()
+    assert db_path.exists()
+
+    frame = pd.read_parquet(parquet_path)
+    assert len(frame) == 900
+    assert set(frame["competition"].unique()) == {"Premier League"}

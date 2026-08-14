@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CornerLab prematch job every 60 minutes
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=cornerlab-prematch.service
+
+[Install]
+WantedBy=timers.target

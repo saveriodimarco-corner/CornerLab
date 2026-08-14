@@ -1,12 +1,13 @@
 {
-  "timestamp": "2026-08-13T20:36:09Z",
-  "git_commit": "290acf2d6020e3da621c55d8b0aa748c43511379",
+  "release_version": "cornerlab-serie-a-v1.1",
+  "timestamp": "2026-08-14T15:41:12Z",
+  "git_commit": "faa54438f580097e9da1d5de1141ae8d140d5a48",
   "model_artifacts": [
     {
       "target_name": "over_9_5",
       "competition": "Serie A",
       "market_side": "OVER",
-      "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+      "artifact_path": "models/research/over_9_5_negative_binomial_probability.pkl",
       "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
       "model_name": "negative_binomial_probability",
       "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
@@ -15,7 +16,7 @@
       "target_name": "over_10_5",
       "competition": "Serie A",
       "market_side": "OVER",
-      "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+      "artifact_path": "models/research/over_10_5_negative_binomial_probability.pkl",
       "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
       "model_name": "negative_binomial_probability",
       "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
@@ -57,7 +58,7 @@
           "target_name": "over_9_5",
           "competition": "Serie A",
           "market_side": "OVER",
-          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+          "artifact_path": "models/research/over_9_5_negative_binomial_probability.pkl",
           "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
           "model_name": "negative_binomial_probability",
           "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
@@ -66,7 +67,7 @@
           "target_name": "under_9_5",
           "competition": "Serie A",
           "market_side": "UNDER",
-          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_9_5_negative_binomial_probability.pkl",
+          "artifact_path": "models/research/over_9_5_negative_binomial_probability.pkl",
           "artifact_hash": "a44495228ae3c22d76aefb9e0204c388f57cf307f4733aa2a50b725be0c401e6",
           "model_name": "negative_binomial_probability",
           "feature_schema_hash": "f50fc8807b4bfcaf717226fc36782dcf0c5513fa6b2920aaf711f17d4ba5ee61"
@@ -75,7 +76,7 @@
           "target_name": "over_10_5",
           "competition": "Serie A",
           "market_side": "OVER",
-          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+          "artifact_path": "models/research/over_10_5_negative_binomial_probability.pkl",
           "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
           "model_name": "negative_binomial_probability",
           "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
@@ -84,7 +85,7 @@
           "target_name": "under_10_5",
           "competition": "Serie A",
           "market_side": "UNDER",
-          "artifact_path": "/Users/saverio/Documents/CornerLab/CornerLab/models/research/over_10_5_negative_binomial_probability.pkl",
+          "artifact_path": "models/research/over_10_5_negative_binomial_probability.pkl",
           "artifact_hash": "45cbba073d9e3f1fb1ab04753c9435aa68b90a6ee657e1fa145aef1b9654efca",
           "model_name": "negative_binomial_probability",
           "feature_schema_hash": "9878dffd54928273ddc7cee56d4478b99375bb955f9fd79fb791ed941e2f6101"
@@ -178,12 +179,21 @@
       "decision_reason",
       "stake",
       "market_implied_probability",
+      "odds_at_decision",
+      "implied_probability_at_decision",
+      "closing_implied_probability",
+      "CLV",
       "edge",
+      "quality_tier",
+      "confidence",
+      "EV",
+      "decision_timestamp",
+      "kickoff",
       "run_id"
     ],
-    "schema_hash": "73ab61dba8e0a4b22e4d980f0fca03b15cf096c736ebaab8b30ca5c2f2b9faaa"
+    "schema_hash": "917e4a126cda1a0782f23a3c4e2e212bad57d67528fa13b93f7257bc0aa307fa"
   },
-  "current_paper_trading_schema_hash": "73ab61dba8e0a4b22e4d980f0fca03b15cf096c736ebaab8b30ca5c2f2b9faaa",
+  "current_paper_trading_schema_hash": "917e4a126cda1a0782f23a3c4e2e212bad57d67528fa13b93f7257bc0aa307fa",
   "live_configuration": {
     "calibration_method": {
       "over_10_5": "platt",

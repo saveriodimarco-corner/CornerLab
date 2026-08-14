@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from src.collector.collector_config import CollectorConfig
+from src.data.normalizer import TEAM_NAME_ALIASES
 from src.data.odds_matcher import OddsMatcher
 from src.data.providers.odds.api_football_odds import ApiFootballOddsProvider
 from src.data.providers.odds.the_odds_api import TheOddsApiProvider
@@ -15,11 +16,11 @@ from src.data.providers.odds.the_odds_api import TheOddsApiProvider
 
 class LiveProviderAdapter:
     SUPPORTED_TOTAL_CORNERS_LINES = {"8.5", "9.5", "10.5", "11.5"}
-    THE_ODDS_SPORT_KEY = "soccer_italy_serie_a"
-    TEAM_ALIASES = {
-        "inter": ["inter milan", "internazionale"],
-        "atalanta": ["atalanta bc"],
-    }
+    COMPETITIONS = (
+        {"name": "Serie A", "league_id": 135, "sport_key": "soccer_italy_serie_a"},
+        {"name": "Premier League", "league_id": 39, "sport_key": "soccer_epl"},
+    )
+    TEAM_ALIASES = TEAM_NAME_ALIASES
 
     logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class LiveProviderAdapter:
         self.api_football = ApiFootballOddsProvider(api_key=config.api_football_key)
         self.the_odds_api = TheOddsApiProvider(
             api_key=config.the_odds_api_key,
-            sport_key=self.THE_ODDS_SPORT_KEY,
+            sport_key=self.COMPETITIONS[0]["sport_key"],
             regions=config.the_odds_regions,
             markets=config.the_odds_market,
             odds_format="decimal",
@@ -37,7 +38,7 @@ class LiveProviderAdapter:
         self.matcher = OddsMatcher(team_aliases=self.TEAM_ALIASES)
         self.last_resolution: Dict[str, Any] | None = None
         self.last_odds_resolution: Dict[str, Dict[str, Any]] = {}
-        self._cached_events: List[Dict[str, Any]] | None = None
+        self._cached_events_by_sport: Dict[str, List[Dict[str, Any]]] = {}
 
     def _extract_line_token(self, value: str) -> str | None:
         matches = re.findall(r"\d+(?:\.\d+)?", value.replace(",", "."))
@@ -85,36 +86,42 @@ class LiveProviderAdapter:
         }
 
     def fetch_fixtures(self) -> List[Dict[str, Any]]:
-        league_id = 135
-        season = 2026
-        try:
-            payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 7})
-        except Exception:
-            payload = {}
-
-        fixtures = payload.get("response", []) if isinstance(payload, dict) else []
-        self.last_resolution = {
-            "collector_mode": "LIVE_COLLECTION READY" if fixtures else "NO FIXTURES AVAILABLE",
-            "provider": "api_football",
-            "fixtures": fixtures,
-            "requested_season": season,
-            "effective_season": season,
-        }
-
         rows: List[Dict[str, Any]] = []
-        for fixture in fixtures:
-            fixture_payload = fixture.get("fixture", {})
-            teams = fixture.get("teams", {}) if isinstance(fixture, dict) else {}
-            rows.append({
-                "provider_fixture_id": str(fixture_payload.get("id") or ""),
-                "competition": "Serie A",
-                "season": str(season or ""),
-                "kickoff_utc": fixture_payload.get("date"),
-                "home_team": teams.get("home", {}).get("name"),
-                "away_team": teams.get("away", {}).get("name"),
-                "status": fixture_payload.get("status", {}).get("short"),
-                "provider": "api-football",
+        resolution_rows: List[Dict[str, Any]] = []
+        for competition in self.COMPETITIONS:
+            league_id = int(competition["league_id"])
+            season = 2026
+            try:
+                payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 7})
+            except Exception:
+                payload = {}
+
+            fixtures = payload.get("response", []) if isinstance(payload, dict) else []
+            resolution_rows.append({
+                "competition": competition["name"],
+                "requested_season": season,
+                "fixtures": len(fixtures),
             })
+
+            for fixture in fixtures:
+                fixture_payload = fixture.get("fixture", {})
+                teams = fixture.get("teams", {}) if isinstance(fixture, dict) else {}
+                rows.append({
+                    "provider_fixture_id": str(fixture_payload.get("id") or ""),
+                    "competition": competition["name"],
+                    "season": str(season or ""),
+                    "kickoff_utc": fixture_payload.get("date"),
+                    "home_team": teams.get("home", {}).get("name"),
+                    "away_team": teams.get("away", {}).get("name"),
+                    "status": fixture_payload.get("status", {}).get("short"),
+                    "provider": "api-football",
+                })
+
+        self.last_resolution = {
+            "collector_mode": "LIVE_COLLECTION READY" if rows else "NO FIXTURES AVAILABLE",
+            "provider": "api_football",
+            "competitions": resolution_rows,
+        }
         return rows
 
     def fetch_odds(self, fixture_id: str) -> List[Dict[str, Any]]:
@@ -124,7 +131,8 @@ class LiveProviderAdapter:
             self.logger.warning("MATCH_UNRESOLVED fixture_id=%s reason=fixture_not_found", fixture_id)
             return []
 
-        event = self._match_event_for_fixture(fixture)
+        competition = str(fixture.get("competition") or "Serie A")
+        event = self._match_event_for_fixture(fixture, competition=competition)
         if event is None:
             self.last_odds_resolution[fixture_id] = {"match_status": "UNMATCHED", "reason": "event_not_matched"}
             self.logger.warning("MATCH_UNRESOLVED fixture_id=%s home=%s away=%s kickoff=%s", fixture_id, fixture.get("home_team"), fixture.get("away_team"), fixture.get("kickoff_utc"))
@@ -136,7 +144,8 @@ class LiveProviderAdapter:
             self.logger.warning("MATCH_UNRESOLVED fixture_id=%s reason=event_id_missing", fixture_id)
             return []
 
-        odds_df = self.the_odds_api.fetch_event_odds(event_id=event_id, sport=self.THE_ODDS_SPORT_KEY)
+        sport_key = self._sport_key_for_competition(competition)
+        odds_df = self.the_odds_api.fetch_event_odds(event_id=event_id, sport=sport_key)
         rows: List[Dict[str, Any]] = []
         if odds_df is not None and not odds_df.empty:
             for _, row in odds_df.iterrows():
@@ -188,13 +197,21 @@ class LiveProviderAdapter:
         finally:
             conn.close()
 
-    def _list_the_odds_events(self) -> List[Dict[str, Any]]:
-        if self._cached_events is None:
-            self._cached_events = self.the_odds_api.list_events(sport=self.THE_ODDS_SPORT_KEY)
-        return self._cached_events
+    def _sport_key_for_competition(self, competition: str) -> str:
+        normalized = str(competition or "Serie A").strip().lower()
+        for item in self.COMPETITIONS:
+            if item["name"].lower() == normalized:
+                return str(item["sport_key"])
+        return str(self.COMPETITIONS[0]["sport_key"])
 
-    def _match_event_for_fixture(self, fixture: Dict[str, Any]) -> Dict[str, Any] | None:
-        events = self._list_the_odds_events()
+    def _list_the_odds_events(self, competition: str) -> List[Dict[str, Any]]:
+        sport_key = self._sport_key_for_competition(competition)
+        if sport_key not in self._cached_events_by_sport:
+            self._cached_events_by_sport[sport_key] = self.the_odds_api.list_events(sport=sport_key)
+        return self._cached_events_by_sport[sport_key]
+
+    def _match_event_for_fixture(self, fixture: Dict[str, Any], competition: str) -> Dict[str, Any] | None:
+        events = self._list_the_odds_events(competition)
         if not events:
             return None
 
@@ -209,7 +226,7 @@ class LiveProviderAdapter:
                     "home_team": event.get("home_team"),
                     "away_team": event.get("away_team"),
                     "date": event.get("commence_time"),
-                    "competition": "Serie A",
+                    "competition": competition,
                     "season": fixture.get("season"),
                 }
             )
@@ -226,7 +243,7 @@ class LiveProviderAdapter:
             },
             fixtures=pd.DataFrame(event_rows),
             tolerance_minutes=45,
-            competition="Serie A",
+            competition=competition,
             season=str(fixture.get("season") or ""),
         )
         if match.get("match_status") != "MATCHED":

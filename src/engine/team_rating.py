@@ -6,6 +6,7 @@ from typing import Dict, List, Union
 import pandas as pd
 
 from src.config import CONFIG
+from src.exceptions import InvalidMatchDataError
 from src.utils.cache import CacheManager
 from src.utils.data_loader import DataLoader
 from src.utils.validator import DataValidator
@@ -60,9 +61,9 @@ class TeamRatingEngine:
         working["away_corners"] = pd.to_numeric(working["away_corners"], errors="coerce")
 
         if working["date"].isna().any():
-            raise ValueError("The date column must contain valid dates.")
+            raise InvalidMatchDataError("The date column must contain valid dates.")
         if working[["home_corners", "away_corners"]].isna().any().any():
-            raise ValueError("Corner values must be numeric.")
+            raise InvalidMatchDataError("Corner values must be numeric.")
 
         working = working.sort_values("date").reset_index(drop=True)
 
@@ -216,7 +217,9 @@ class TeamRatingEngine:
         """Ensure the incoming dataframe contains all required columns."""
         missing = self.REQUIRED_COLUMNS.difference(data.columns)
         if missing:
-            raise ValueError(f"Missing required columns: {sorted(missing)}")
+            raise InvalidMatchDataError(f"Missing required columns: {sorted(missing)}")
+        if data[["home_team", "away_team"]].isna().any().any() or (data[["home_team", "away_team"]].astype(str).apply(lambda column: column.str.strip().eq("")).any().any()):
+            raise InvalidMatchDataError("Team names must be present.")
 
     def _weighted_std(self, values: List[float]) -> float:
         """Return the standard deviation of a list of values."""

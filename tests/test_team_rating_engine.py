@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from src.engine.team_rating import TeamRatingEngine
+from src.exceptions import InvalidMatchDataError
 
 
 @pytest.fixture
@@ -24,6 +25,14 @@ def test_missing_columns_raise_explicit_error():
 
     with pytest.raises(ValueError, match="Missing required columns"):
         engine.calculate_ratings(bad_frame)
+
+
+def test_malformed_corner_input_raises_domain_error(match_data: pd.DataFrame):
+    engine = TeamRatingEngine()
+    match_data.loc[0, "home_corners"] = "not-a-number"
+
+    with pytest.raises(InvalidMatchDataError, match="Corner values must be numeric"):
+        engine.calculate_ratings(match_data)
 
 
 def test_calculate_ratings_returns_expected_columns(match_data: pd.DataFrame):
