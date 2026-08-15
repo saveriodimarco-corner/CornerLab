@@ -16,7 +16,8 @@ from src.collector.collector_repository import CollectorRepository
 from src.operations.monitoring import refresh_operations_status
 from src.operations.prematch_runner import run_prematch
 from src.research.observation_freeze import settle_paper_trades
-from src.operations.telegram_notifier import format_prematch_completed, format_settlement_completed, notify_new_plays, send_message
+from src.operations.telegram_notifier import SUPPORTED_TARGETS as SUPPORTED_TELEGRAM_TARGETS, format_prematch_completed, format_settlement_completed, notify_new_plays, send_message
+from src.operations import telegram_bot
 
 import pandas as pd
 
@@ -155,13 +156,26 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 			send_message(format_prematch_completed(result, completed_at))
 			report_path = base_dir / "reports" / "paper_trading_current.csv"
 			if report_path.exists():
-				notify_new_plays(base_dir, pd.read_csv(report_path))
+				report = pd.read_csv(report_path)
+				notify_new_plays(base_dir, report)
+				_offer_bet_confirmations(base_dir, report)
 		elif job_type == "settlement":
 			summary = result.get("summary", result.get("settlement", {}))
 			if int(summary.get("total_bets", 0)) > 0:
 				send_message(format_settlement_completed(summary, completed_at))
 	except Exception:
 		return
+
+
+def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> None:
+	"""Send the interactive real-bet confirmation keyboard for new supported Serie A PLAY rows only."""
+	if report.empty or "decision" not in report.columns:
+		return
+	for _, row in report.loc[report["decision"].astype(str) == "PLAY"].iterrows():
+		row_dict = row.to_dict()
+		if str(row_dict.get("target_name", "")) not in SUPPORTED_TELEGRAM_TARGETS or str(row_dict.get("competition", "")) != "Serie A":
+			continue
+		telegram_bot.offer_bet_confirmation(base_dir, row_dict)
 
 
 def run_prematch_job(base_dir: Path | str | None = None) -> tuple[int, dict[str, Any]]:

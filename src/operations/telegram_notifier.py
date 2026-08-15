@@ -22,14 +22,17 @@ def _enabled() -> bool:
 	return os.getenv("CORNERLAB_TELEGRAM_ENABLED", "false").strip().lower() == "true"
 
 
-def send_message(text: str, request_sender: Callable[[str, bytes, float], None] | None = None) -> bool:
+def send_message(text: str, request_sender: Callable[[str, bytes, float], None] | None = None, reply_markup: dict[str, Any] | None = None) -> bool:
 	"""Send an optional Telegram message; notification failure is always non-fatal."""
 	token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 	chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 	if not _enabled() or not token or not chat_id:
 		return False
 	try:
-		payload = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode("utf-8")
+		fields = {"chat_id": chat_id, "text": text}
+		if reply_markup is not None:
+			fields["reply_markup"] = json.dumps(reply_markup)
+		payload = urllib.parse.urlencode(fields).encode("utf-8")
 		url = f"https://api.telegram.org/bot{token}/sendMessage"
 		if request_sender:
 			request_sender(url, payload, 5.0)
