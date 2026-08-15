@@ -54,15 +54,30 @@ def test_callback_payload_never_contains_monetary_or_model_values(tmp_path: Path
 	assert all(value.split(":", 1)[1] == bet_id for value in callback_values)
 
 
+def _sent_text(payloads: list[bytes]) -> str:
+	import urllib.parse
+
+	return "\n".join(urllib.parse.unquote_plus(payload.decode()) for payload in payloads)
+
+
 def test_modify_stake_via_callback_then_message_persists_actual_stake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
 
 	telegram_bot.handle_callback(tmp_path, "999", f"stake:{bet_id}", request_sender=lambda *_: None)
-	result = telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda *_: None)
+	payloads: list[bytes] = []
+	result = telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda _, payload, __: payloads.append(payload))
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+	sent = _sent_text(payloads)
 
 	assert result["ok"] is True
 	assert result["bet"]["actual_stake"] == 3.50
+	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
+	assert snapshot["open_exposure"] == 0.0
+	assert "CONFERMA GIOCATA" in sent
+	assert "Stake attuale: €3.50" in sent
+	assert "GIOCATA REGISTRATA" not in sent
+	assert f"confirm:{bet_id}" in sent
 
 
 def test_modify_odds_via_callback_then_message_persists_actual_odds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,10 +85,38 @@ def test_modify_odds_via_callback_then_message_persists_actual_odds(tmp_path: Pa
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
 
 	telegram_bot.handle_callback(tmp_path, "999", f"odds:{bet_id}", request_sender=lambda *_: None)
-	result = telegram_bot.handle_message(tmp_path, "999", "2.05", request_sender=lambda *_: None)
+	payloads: list[bytes] = []
+	result = telegram_bot.handle_message(tmp_path, "999", "2.05", request_sender=lambda _, payload, __: payloads.append(payload))
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+	sent = _sent_text(payloads)
 
 	assert result["ok"] is True
 	assert result["bet"]["actual_odds"] == 2.05
+	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
+	assert snapshot["open_exposure"] == 0.0
+	assert "Quota attuale: 2.05" in sent
+	assert "GIOCATA REGISTRATA" not in sent
+	assert f"skip:{bet_id}" in sent
+
+
+def test_edited_suggestion_confirms_with_edited_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	_configure(monkeypatch)
+	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
+
+	telegram_bot.handle_callback(tmp_path, "999", f"stake:{bet_id}", request_sender=lambda *_: None)
+	telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda *_: None)
+	telegram_bot.handle_callback(tmp_path, "999", f"odds:{bet_id}", request_sender=lambda *_: None)
+	telegram_bot.handle_message(tmp_path, "999", "2.10", request_sender=lambda *_: None)
+
+	payloads: list[bytes] = []
+	result = telegram_bot.handle_callback(tmp_path, "999", f"confirm:{bet_id}", request_sender=lambda _, payload, __: payloads.append(payload))
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert result["bet"]["actual_stake"] == 3.50
+	assert result["bet"]["actual_odds"] == 2.10
+	assert snapshot["open_exposure"] == 3.50
+	assert "GIOCATA REGISTRATA" in _sent_text(payloads)
 
 
 def test_skip_via_callback_has_no_bankroll_impact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

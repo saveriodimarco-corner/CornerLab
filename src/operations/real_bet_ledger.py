@@ -204,8 +204,10 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 
 		ensure_opening_balance(conn)
 		snapshot = _snapshot(conn)
-		stake = float(actual_stake) if actual_stake is not None else float(row["suggested_stake"] or 0.0)
-		odds = float(actual_odds) if actual_odds is not None else float(row["suggested_odds"] or 0.0)
+		pending_stake = row["actual_stake"] if row["actual_stake"] is not None else row["suggested_stake"]
+		pending_odds = row["actual_odds"] if row["actual_odds"] is not None else row["suggested_odds"]
+		stake = float(actual_stake) if actual_stake is not None else float(pending_stake or 0.0)
+		odds = float(actual_odds) if actual_odds is not None else float(pending_odds or 0.0)
 
 		if stake <= 0.0:
 			return {"ok": False, "reason": "invalid_stake", "bet": row}
@@ -233,12 +235,32 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 		conn.close()
 
 
+def _edit_pending_value(base_dir: Path | str, suggestion_id: str, column: str, value: float) -> dict[str, Any]:
+	"""Edit a still-unconfirmed suggestion; never places the bet nor touches the bankroll."""
+	conn = _connect(base_dir)
+	try:
+		row = _fetch_bet(conn, suggestion_id)
+		if row is None:
+			return {"ok": False, "reason": "unknown_suggestion", "bet": None}
+		if row["status"] != SUGGESTED:
+			return {"ok": False, "reason": "already_processed", "bet": row}
+		if value <= 0.0 or (column == "actual_odds" and value <= 1.0):
+			return {"ok": False, "reason": "invalid_stake" if column == "actual_stake" else "invalid_odds", "bet": row}
+
+		now = _utc_now()
+		conn.execute(f"UPDATE real_bets SET {column} = ?, updated_at = ? WHERE suggestion_id = ?", (float(value), now, suggestion_id))
+		conn.commit()
+		return {"ok": True, "reason": None, "bet": _fetch_bet(conn, suggestion_id)}
+	finally:
+		conn.close()
+
+
 def modify_stake(base_dir: Path | str, suggestion_id: str, new_stake: float) -> dict[str, Any]:
-	return confirm_bet(base_dir, suggestion_id, actual_stake=new_stake)
+	return _edit_pending_value(base_dir, suggestion_id, "actual_stake", new_stake)
 
 
 def modify_odds(base_dir: Path | str, suggestion_id: str, new_odds: float) -> dict[str, Any]:
-	return confirm_bet(base_dir, suggestion_id, actual_odds=new_odds)
+	return _edit_pending_value(base_dir, suggestion_id, "actual_odds", new_odds)
 
 
 def skip_suggestion(base_dir: Path | str, suggestion_id: str) -> dict[str, Any]:

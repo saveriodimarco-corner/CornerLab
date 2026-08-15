@@ -53,6 +53,20 @@ def format_suggestion_prompt(row: dict[str, Any]) -> str:
 	)
 
 
+def format_pending_suggestion(bet: dict[str, Any]) -> str:
+	"""Render a still-unconfirmed suggestion using its current (possibly edited) values."""
+	fixture = f"{bet.get('home_team', '-')} vs {bet.get('away_team', '-')}"
+	market = f"{str(bet.get('side', '')).upper()} {bet.get('line', '')} corner"
+	odds = bet.get("actual_odds") if bet.get("actual_odds") is not None else bet.get("suggested_odds", 0.0)
+	stake = bet.get("actual_stake") if bet.get("actual_stake") is not None else bet.get("suggested_stake", 0.0)
+	return (
+		f"🎯 CORNERLAB — CONFERMA GIOCATA\n\n{fixture}\n{market}\n\n"
+		f"Quota attuale: {float(odds or 0.0):.2f}\n"
+		f"Stake attuale: €{float(stake or 0.0):.2f}\n"
+		f"Qualità: {bet.get('quality_tier', '-')}"
+	)
+
+
 def format_bet_confirmation(bet: dict[str, Any], snapshot: dict[str, float]) -> str:
 	fixture = f"{bet.get('home_team', '-')} vs {bet.get('away_team', '-')}"
 	market = f"{str(bet.get('side', '')).upper()} {bet.get('line', '')} corner"
@@ -127,6 +141,13 @@ def _send_result_confirmation(base_dir: Path | str, result: dict[str, Any], requ
 		send_message(format_bet_confirmation(bet, snapshot), request_sender=request_sender)
 
 
+def _resend_suggestion(result: dict[str, Any], request_sender: Callable[[str, bytes, float], None] | None) -> None:
+	"""An edited suggestion stays SUGGESTED, so re-offer it with the same four buttons."""
+	bet = result.get("bet")
+	if result.get("ok") and bet is not None and bet.get("status") == real_bet_ledger.SUGGESTED:
+		send_message(format_pending_suggestion(bet), request_sender=request_sender, reply_markup=build_play_keyboard(bet["bet_id"]))
+
+
 def handle_callback(base_dir: Path | str, chat_id: Any, callback_data: str, request_sender: Callable[[str, bytes, float], None] | None = None) -> dict[str, Any]:
 	"""Resolve an opaque inline-button callback server-side; unauthorized chats are silently ignored."""
 	if not _authorized(chat_id):
@@ -195,14 +216,14 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 		if bet is None:
 			return {"ok": False, "reason": "unknown_bet"}
 		result = real_bet_ledger.modify_stake(base_dir, bet["suggestion_id"], amount)
-		_send_result_confirmation(base_dir, result, request_sender)
+		_resend_suggestion(result, request_sender)
 		return result
 	if action == "modify_odds":
 		bet = real_bet_ledger.get_bet_by_id(base_dir, pending.get("bet_id"))
 		if bet is None:
 			return {"ok": False, "reason": "unknown_bet"}
 		result = real_bet_ledger.modify_odds(base_dir, bet["suggestion_id"], amount)
-		_send_result_confirmation(base_dir, result, request_sender)
+		_resend_suggestion(result, request_sender)
 		return result
 	if action == "deposit":
 		result = real_bet_ledger.record_deposit(base_dir, amount)

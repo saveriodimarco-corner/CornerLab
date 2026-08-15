@@ -29,6 +29,16 @@ def _play_row(fixture_id: int = 1, **overrides) -> dict:
 	return row
 
 
+def _count_ledger_events(base_dir: Path, event_type: str) -> int:
+	import sqlite3
+
+	conn = sqlite3.connect(base_dir / "data" / "operations" / "real_bets.sqlite")
+	try:
+		return int(conn.execute("SELECT COUNT(*) FROM bankroll_ledger WHERE event_type = ?", (event_type,)).fetchone()[0])
+	finally:
+		conn.close()
+
+
 def test_suggested_play_does_not_affect_bankroll(tmp_path: Path) -> None:
 	suggestion_id = real_bet_ledger.suggestion_key(_play_row())
 	real_bet_ledger.record_suggestion(tmp_path, _play_row())
@@ -58,28 +68,68 @@ def test_confirm_suggested_stake_places_bet_and_reserves_exposure(tmp_path: Path
 	assert snapshot["total_bankroll"] == 100.0
 
 
-def test_modify_stake_persists_actual_stake(tmp_path: Path) -> None:
+def test_modify_stake_persists_actual_stake_and_keeps_suggested(tmp_path: Path) -> None:
 	row = _play_row()
 	suggestion_id = real_bet_ledger.suggestion_key(row)
 	real_bet_ledger.record_suggestion(tmp_path, row)
 
 	result = real_bet_ledger.modify_stake(tmp_path, suggestion_id, 3.0)
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
 	assert result["ok"] is True
 	assert result["bet"]["actual_stake"] == 3.0
-	assert result["bet"]["actual_odds"] == pytest.approx(1.92)
+	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
+	assert snapshot["open_exposure"] == 0.0
+	assert snapshot["available_bankroll"] == 100.0
 
 
-def test_modify_odds_persists_actual_odds_separately_from_suggested(tmp_path: Path) -> None:
+def test_modify_odds_persists_actual_odds_and_keeps_suggested(tmp_path: Path) -> None:
 	row = _play_row()
 	suggestion_id = real_bet_ledger.suggestion_key(row)
 	real_bet_ledger.record_suggestion(tmp_path, row)
 
 	result = real_bet_ledger.modify_odds(tmp_path, suggestion_id, 2.05)
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
 	assert result["ok"] is True
 	assert result["bet"]["actual_odds"] == 2.05
 	assert result["bet"]["suggested_odds"] == pytest.approx(1.92)
+	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
+	assert snapshot["open_exposure"] == 0.0
+	assert snapshot["available_bankroll"] == 100.0
+
+
+def test_edit_stake_then_odds_then_confirm_creates_single_placed_bet(tmp_path: Path) -> None:
+	row = _play_row()
+	suggestion_id = real_bet_ledger.suggestion_key(row)
+	real_bet_ledger.record_suggestion(tmp_path, row)
+
+	real_bet_ledger.modify_stake(tmp_path, suggestion_id, 3.50)
+	real_bet_ledger.modify_odds(tmp_path, suggestion_id, 2.10)
+	result = real_bet_ledger.confirm_bet(tmp_path, suggestion_id)
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+	placed_events = _count_ledger_events(tmp_path, "BET_PLACED")
+
+	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert result["bet"]["actual_stake"] == 3.50
+	assert result["bet"]["actual_odds"] == 2.10
+	assert placed_events == 1
+	assert snapshot["open_exposure"] == 3.50
+
+
+def test_skip_after_edits_still_produces_skipped_without_bankroll_impact(tmp_path: Path) -> None:
+	row = _play_row()
+	suggestion_id = real_bet_ledger.suggestion_key(row)
+	real_bet_ledger.record_suggestion(tmp_path, row)
+	real_bet_ledger.modify_stake(tmp_path, suggestion_id, 3.50)
+	real_bet_ledger.modify_odds(tmp_path, suggestion_id, 2.10)
+
+	result = real_bet_ledger.skip_suggestion(tmp_path, suggestion_id)
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert result["bet"]["status"] == real_bet_ledger.SKIPPED
+	assert snapshot["open_exposure"] == 0.0
+	assert snapshot["total_bankroll"] == 100.0
 
 
 def test_skip_never_touches_bankroll_and_is_idempotent(tmp_path: Path) -> None:
@@ -110,6 +160,7 @@ def test_duplicate_confirm_does_not_duplicate_bet_or_exposure(tmp_path: Path) ->
 	assert second["reason"] == "already_processed"
 	assert second["bet"]["actual_stake"] == 5.0
 	assert snapshot["open_exposure"] == 5.0
+	assert _count_ledger_events(tmp_path, "BET_PLACED") == 1
 
 
 def test_deposit_increases_bankroll(tmp_path: Path) -> None:
