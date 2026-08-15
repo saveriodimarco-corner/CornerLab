@@ -12,11 +12,40 @@ import numpy as np
 import pandas as pd
 
 from src.research.bankroll_tracker import BankrollTracker
+from src.exceptions import BankrollUnavailableError
 
 
 SUPPORTED_SERIE_A_MARKETS = ["over_9_5", "under_9_5", "over_10_5", "under_10_5"]
 UNSUPPORTED_SERIE_A_MARKETS = ["over_8_5", "under_8_5", "over_11_5", "under_11_5"]
 CHECKPOINTS = [50, 100, 200]
+
+
+def resolve_current_bankroll(base_dir: Path | str, default_bankroll: float = 100.0) -> float:
+    """Resolve the current staking bankroll from the canonical settled ledger.
+
+    Falls back to default_bankroll only when no settled bets exist yet; fails
+    closed (raises) if settled history exists but the bankroll is corrupt.
+    """
+    settled_path = Path(base_dir) / "reports" / "paper_trading_settled.csv"
+    if not settled_path.exists():
+        return float(default_bankroll)
+    try:
+        settled = pd.read_csv(settled_path)
+    except (pd.errors.EmptyDataError, OSError, ValueError):
+        return float(default_bankroll)
+    if settled.empty or "bet_result" not in settled.columns or "bankroll_after" not in settled.columns:
+        return float(default_bankroll)
+
+    bets_only = settled.loc[settled["bet_result"].astype(str).isin(["WIN", "LOSS"])].copy()
+    if bets_only.empty:
+        return float(default_bankroll)
+
+    bets_only["settled_timestamp"] = pd.to_datetime(bets_only.get("settled_timestamp"), errors="coerce")
+    bets_only = bets_only.sort_values(["settled_timestamp", "fixture_id", "line"], kind="mergesort")
+    latest_bankroll = pd.to_numeric(bets_only["bankroll_after"], errors="coerce").iloc[-1]
+    if not np.isfinite(latest_bankroll) or latest_bankroll <= 0.0:
+        raise BankrollUnavailableError(f"Settled history exists but current bankroll is invalid: {latest_bankroll!r}")
+    return float(latest_bankroll)
 
 
 def build_production_baseline_manifest(base_dir: Path | str | None = None, output_dir: Path | str | None = None) -> dict[str, Any]:

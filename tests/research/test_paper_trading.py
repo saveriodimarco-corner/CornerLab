@@ -21,7 +21,8 @@ from src.research.paper_trading import (
     build_live_fixture_features,
     run_paper_trading,
 )
-from src.research.observation_freeze import build_production_baseline_manifest, settle_paper_trades, write_model_observation_artifacts, write_performance_dashboard_artifacts
+from src.research.observation_freeze import build_production_baseline_manifest, resolve_current_bankroll, settle_paper_trades, write_model_observation_artifacts, write_performance_dashboard_artifacts
+from src.exceptions import BankrollUnavailableError
 
 
 class _DeterministicModel:
@@ -218,6 +219,54 @@ def test_model_observation_artifacts_describe_settled_records_without_mutation(t
 def test_under_probability_is_complement_of_over_probability() -> None:
     assert _resolve_market_probability("TOTAL_CORNERS_OVER", "OVER", 0.62) == 0.62
     assert _resolve_market_probability("TOTAL_CORNERS_UNDER", "UNDER", 0.62) == 0.38
+
+
+def _write_settled_ledger(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def _settled_row(fixture_id: int, settled_timestamp: str, bankroll_after: float, bet_result: str = "WIN", line: str = "9.5") -> dict:
+    return {"fixture_id": fixture_id, "line": line, "bet_result": bet_result, "bankroll_after": bankroll_after, "settled_timestamp": settled_timestamp}
+
+
+def test_resolve_current_bankroll_defaults_to_100_when_no_settled_bets(tmp_path: Path) -> None:
+    assert resolve_current_bankroll(tmp_path, default_bankroll=100.0) == 100.0
+
+    _write_settled_ledger(tmp_path / "reports" / "paper_trading_settled.csv", [_settled_row(1, "2026-08-01T12:00:00Z", 105.0, bet_result="PENDING")])
+    assert resolve_current_bankroll(tmp_path, default_bankroll=100.0) == 100.0
+
+
+def test_resolve_current_bankroll_uses_latest_settled_chronology(tmp_path: Path) -> None:
+    _write_settled_ledger(
+        tmp_path / "reports" / "paper_trading_settled.csv",
+        [
+            _settled_row(2, "2026-08-02T12:00:00Z", 94.20),
+            _settled_row(1, "2026-08-01T12:00:00Z", 100.0),
+        ],
+    )
+    assert resolve_current_bankroll(tmp_path, default_bankroll=100.0) == 94.20
+
+
+def test_resolve_current_bankroll_reflects_growth_to_118_40(tmp_path: Path) -> None:
+    _write_settled_ledger(
+        tmp_path / "reports" / "paper_trading_settled.csv",
+        [
+            _settled_row(1, "2026-08-01T12:00:00Z", 105.0),
+            _settled_row(2, "2026-08-02T12:00:00Z", 118.40),
+        ],
+    )
+    assert resolve_current_bankroll(tmp_path, default_bankroll=100.0) == 118.40
+
+
+def test_resolve_current_bankroll_fails_closed_on_corrupt_data(tmp_path: Path) -> None:
+    _write_settled_ledger(tmp_path / "reports" / "paper_trading_settled.csv", [_settled_row(1, "2026-08-01T12:00:00Z", -5.0)])
+    with pytest.raises(BankrollUnavailableError):
+        resolve_current_bankroll(tmp_path, default_bankroll=100.0)
+
+    _write_settled_ledger(tmp_path / "reports" / "paper_trading_settled.csv", [_settled_row(1, "2026-08-01T12:00:00Z", float("nan"))])
+    with pytest.raises(BankrollUnavailableError):
+        resolve_current_bankroll(tmp_path, default_bankroll=100.0)
 
 
 def test_invalid_fixture_model_input_is_non_play_without_blocking_valid_fixture() -> None:

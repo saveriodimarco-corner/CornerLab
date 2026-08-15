@@ -912,6 +912,9 @@ def _prepare_play_cards(frame: pd.DataFrame, side_filter: str, line_filter: str,
 				"vantaggio": edge,
 				"model_target": row.get("target_name"),
 				"odds_timestamp": row.get("snapshot_timestamp"),
+				"half_kelly_teorico": row.get("half_kelly"),
+				"cap_massimo": row.get("stake_cap_fraction"),
+				"stake_applicato": row.get("stake_fraction_used"),
 			}
 		)
 	return cards
@@ -946,6 +949,12 @@ def _render_play_cards(cards: list[dict[str, Any]]) -> None:
 			st.write(f"{UI_LABELS['fair_odds']}: {_to_decimal(card.get('quota_equa'))}")
 			st.write(f"{UI_LABELS['market_implied_probability']}: {_to_percentage(card.get('probabilita_implicita'), scale=100.0, signed=False, digits=1)}")
 			st.write(f"{UI_LABELS['edge']}: {_to_percentage(card.get('vantaggio'), scale=100.0, signed=True, digits=1)}")
+			if card.get("half_kelly_teorico") is not None:
+				st.write(f"Half Kelly teorico: {_to_percentage(card.get('half_kelly_teorico'), scale=100.0, signed=False, digits=1)}")
+			if card.get("cap_massimo") is not None:
+				st.write(f"Cap massimo: {_to_percentage(card.get('cap_massimo'), scale=100.0, signed=False, digits=1)}")
+			if card.get("stake_applicato") is not None:
+				st.write(f"Stake applicato: {_to_percentage(card.get('stake_applicato'), scale=100.0, signed=False, digits=1)}")
 			if card.get("model_target"):
 				st.write(f"model target: {card.get('model_target')}")
 			if card.get("odds_timestamp"):

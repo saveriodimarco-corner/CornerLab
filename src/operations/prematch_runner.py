@@ -11,7 +11,7 @@ from src.collector.collector_repository import CollectorRepository
 from src.collector.fixture_collector import FixtureCollector
 from src.collector.live_provider_adapter import LiveProviderAdapter
 from src.collector.odds_collector import OddsCollector
-from src.research.observation_freeze import build_production_baseline_manifest, settle_paper_trades
+from src.research.observation_freeze import build_production_baseline_manifest, resolve_current_bankroll, settle_paper_trades
 from src.research.paper_trading import run_paper_trading
 
 
@@ -29,6 +29,8 @@ def run_prematch(base_dir: Path | str | None = None, output_dir: Path | str | No
     started_at = _utc_now()
     health = run_health_check(base_dir=base_dir, output_dir=output_dir)
     baseline_manifest = build_production_baseline_manifest(base_dir=base_dir, output_dir=output_dir)
+    # Use the current settled bankroll for staking; falls back to `bankroll` only when no settled history exists yet.
+    current_bankroll = resolve_current_bankroll(base_dir=output_dir, default_bankroll=bankroll)
 
     config = CollectorConfig(db_path=base_dir / "data" / "collector.sqlite")
     repo = CollectorRepository(config)
@@ -74,8 +76,8 @@ def run_prematch(base_dir: Path | str | None = None, output_dir: Path | str | No
             if stored is not None:
                 odds_writes += 1
 
-    paper_trading_result = run_paper_trading(base_dir=base_dir, output_dir=output_dir, bankroll=bankroll)
-    settlement_result = settle_paper_trades(base_dir=base_dir, output_dir=output_dir, bankroll_start=bankroll)
+    paper_trading_result = run_paper_trading(base_dir=base_dir, output_dir=output_dir, bankroll=current_bankroll)
+    settlement_result = settle_paper_trades(base_dir=base_dir, output_dir=output_dir, bankroll_start=current_bankroll)
     completed_at = _utc_now()
 
     result: dict[str, Any] = {

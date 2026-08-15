@@ -11,6 +11,8 @@ from typing import Any, Callable
 
 import pandas as pd
 
+from src.research.decision_engine import MAX_STAKE_FRACTION
+
 
 LOGGER = logging.getLogger(__name__)
 SUPPORTED_TARGETS = {"over_9_5", "under_9_5", "over_10_5", "under_10_5"}
@@ -62,7 +64,7 @@ def format_settlement_completed(summary: dict[str, Any], timestamp: str) -> str:
 def format_play(row: dict[str, Any]) -> str:
 	fixture = f"{row.get('home_team', '-')} vs {row.get('away_team', '-')}"
 	market = f"{str(row.get('side', '')).upper()} {row.get('line', '')} corner"
-	return f"🎯 CORNERLAB — NUOVA OPPORTUNITÀ\n\n{fixture}\n{market}\n\nQuota: {float(row.get('odds_at_decision', row.get('closing_odds', 0.0))):.2f}\nProbabilità modello: {float(row.get('predicted_probability', 0.0)):.1%}\nEV: {float(row.get('EV', row.get('ev', 0.0))):+.1%}\nQualità: {row.get('quality_tier', '-')}\nStake suggerito: €{float(row.get('recommended_stake', row.get('stake', 0.0))):.2f}\n\nKickoff: {row.get('kickoff', row.get('kickoff_utc', '-'))}\n\nApri CornerLab:\nhttps://cornerlabpro.com"
+	return f"🎯 CORNERLAB — NUOVA OPPORTUNITÀ\n\n{fixture}\n{market}\n\nQuota: {float(row.get('odds_at_decision', row.get('closing_odds', 0.0))):.2f}\nProbabilità modello: {float(row.get('predicted_probability', 0.0)):.1%}\nEV: {float(row.get('EV', row.get('ev', 0.0))):+.1%}\nQualità: {row.get('quality_tier', '-')}\nStake suggerito: €{float(row.get('recommended_stake', row.get('stake', 0.0))):.2f}\nCap rischio: {MAX_STAKE_FRACTION:.0%}\n\nKickoff: {row.get('kickoff', row.get('kickoff_utc', '-'))}\n\nApri CornerLab:\nhttps://cornerlabpro.com"
 
 
 MAX_INDIVIDUAL_PLAY_ALERTS = 5

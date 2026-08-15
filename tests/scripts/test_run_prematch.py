@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 from src.operations import prematch_runner
 
 
@@ -108,3 +110,36 @@ def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypat
     assert result["paper_trading"]["run_id"] == "prematch-test"
     assert result["production_baseline"]["git_commit"] == "abc123"
     assert (tmp_path / "reports" / "prematch_latest.json").exists()
+
+
+def test_run_prematch_uses_dynamic_settled_bankroll_not_fixed_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(prematch_runner, "run_health_check", lambda **_: {"ok": True})
+    monkeypatch.setattr(prematch_runner, "CollectorRepository", _FakeRepo)
+    monkeypatch.setattr(prematch_runner, "FixtureCollector", _FakeFixtureCollector)
+    monkeypatch.setattr(prematch_runner, "OddsCollector", _FakeOddsCollector)
+    monkeypatch.setattr(prematch_runner, "LiveProviderAdapter", _FakeAdapter)
+    monkeypatch.setattr(prematch_runner, "build_production_baseline_manifest", _fake_manifest)
+    monkeypatch.setattr(prematch_runner, "settle_paper_trades", _fake_settlement)
+
+    settled_path = tmp_path / "reports" / "paper_trading_settled.csv"
+    settled_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"fixture_id": 1, "line": "9.5", "bet_result": "WIN", "bankroll_after": 118.40, "settled_timestamp": "2026-08-01T12:00:00Z"}]).to_csv(settled_path, index=False)
+
+    captured_bankrolls = []
+    monkeypatch.setattr(
+        prematch_runner,
+        "run_paper_trading",
+        lambda **kwargs: captured_bankrolls.append(kwargs["bankroll"]) or {
+            "summary": {"run_id": "prematch-test", "fixtures": 2, "total_odds_rows": 2},
+            "output_paths": {
+                "csv": tmp_path / "reports" / "paper_trading_current.csv",
+                "parquet": tmp_path / "data" / "paper_trading" / "paper_trades_current.parquet",
+                "summary": tmp_path / "reports" / "paper_trading_summary.md",
+                "history": tmp_path / "data" / "paper_trading" / "run_history.jsonl",
+            },
+        },
+    )
+
+    prematch_runner.run_prematch(base_dir=tmp_path, output_dir=tmp_path, bankroll=100.0)
+
+    assert captured_bankrolls == [118.40]
