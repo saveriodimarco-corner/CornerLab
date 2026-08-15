@@ -183,3 +183,43 @@ def test_degraded_alert_requires_persistence_and_monitoring_does_not_touch_decis
 
 	assert [item["status"] for item in sent] == [monitoring.DEGRADED]
 	assert report.read_bytes() == before
+
+
+def test_fresh_prematch_with_no_settlement_history_is_healthy(tmp_path: Path) -> None:
+	now = monitoring.datetime(2026, 8, 15, 12, 50, 31, tzinfo=monitoring.timezone.utc)
+	_write_history(tmp_path, [_job("prematch", "SUCCESS", "2026-08-15T12:50:25Z")])
+
+	status = monitoring.derive_operations_status(tmp_path, now=now)
+
+	assert status["system_status"] == monitoring.HEALTHY
+	assert status["last_warning_summary"] is None
+
+
+def test_stale_prematch_without_settlement_history_is_degraded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	monkeypatch.setenv("CORNERLAB_PREMATCH_STALE_MINUTES", "60")
+	now = monitoring.datetime(2026, 8, 15, 15, 0, 0, tzinfo=monitoring.timezone.utc)
+	_write_history(tmp_path, [_job("prematch", "SUCCESS", "2026-08-15T12:50:25Z")])
+
+	status = monitoring.derive_operations_status(tmp_path, now=now)
+
+	assert status["system_status"] == monitoring.DEGRADED
+	assert status["last_warning_summary"] == "Operational job freshness threshold exceeded"
+
+
+def test_naive_timestamp_is_treated_as_utc_without_false_stale(tmp_path: Path) -> None:
+	now = monitoring.datetime(2026, 8, 15, 12, 50, 31, tzinfo=monitoring.timezone.utc)
+	_write_history(tmp_path, [{"job_type": "prematch", "status": "SUCCESS", "started_at": "2026-08-15T12:46:34", "completed_at": "2026-08-15T12:50:25", "exit_code": 0, "warning_count": 0, "error_summary": None}])
+
+	status = monitoring.derive_operations_status(tmp_path, now=now)
+
+	assert status["system_status"] == monitoring.HEALTHY
+
+
+def test_scheduler_not_live_does_not_mark_fresh_job_stale(tmp_path: Path) -> None:
+	now = monitoring.datetime(2026, 8, 15, 12, 50, 31, tzinfo=monitoring.timezone.utc)
+	_write_history(tmp_path, [_job("prematch", "SUCCESS", "2026-08-15T12:50:25Z")])
+
+	status = monitoring.derive_operations_status(tmp_path, now=now)
+
+	assert status["system_status"] == monitoring.HEALTHY
+	assert status["scheduler_status"] == "SYSTEMD_TIMER_CONFIGURED"

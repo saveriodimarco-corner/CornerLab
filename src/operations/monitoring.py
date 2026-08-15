@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from src.operations.telegram_notifier import format_critical_failure, format_recovery, send_message
+
 
 HEALTHY = "HEALTHY"
 DEGRADED = "DEGRADED"
@@ -51,9 +53,11 @@ def _parse_timestamp(value: Any) -> datetime | None:
 	if not value:
 		return None
 	try:
-		return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+		parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 	except ValueError:
 		return None
+	# Canonical comparison timezone is UTC; normalize naive timestamps instead of mixing.
+	return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 def _latest(rows: list[dict[str, Any]], job_type: str, statuses: set[str]) -> dict[str, Any] | None:
@@ -89,13 +93,20 @@ def derive_operations_status(base_dir: Path | str, now: datetime | None = None) 
 	latest_failure = max([row for row in [latest_prematch, latest_settlement] if row and row.get("status") == "FAILED"], key=lambda row: row.get("completed_at", ""), default=None)
 	prematch_stale_minutes = int(os.getenv("CORNERLAB_PREMATCH_STALE_MINUTES", "120"))
 	settlement_stale_minutes = int(os.getenv("CORNERLAB_SETTLEMENT_STALE_MINUTES", "180"))
+	# Freshness only applies to job types that have actually run at least once;
+	# a job type with no history yet (e.g. settlement never scheduled locally)
+	# must not make an otherwise fresh successful job look stale.
+	prematch_has_history = latest_prematch is not None
+	settlement_has_history = latest_settlement is not None
+	prematch_stale = prematch_has_history and _is_stale(prematch_success.get("completed_at") if prematch_success else None, prematch_stale_minutes, now)
+	settlement_stale = settlement_has_history and _is_stale(settlement_success.get("completed_at") if settlement_success else None, settlement_stale_minutes, now)
 	if not rows:
 		system_status = UNKNOWN
 		warning_summary = None
 	elif latest_failure:
 		system_status = FAILED
 		warning_summary = None
-	elif _is_stale(prematch_success.get("completed_at") if prematch_success else None, prematch_stale_minutes, now) or _is_stale(settlement_success.get("completed_at") if settlement_success else None, settlement_stale_minutes, now):
+	elif prematch_stale or settlement_stale:
 		system_status = DEGRADED
 		warning_summary = "Operational job freshness threshold exceeded"
 	elif any(int(row.get("warning_count", 0)) > 0 for row in rows[-2:]):
@@ -174,6 +185,10 @@ def refresh_operations_status(
 			state["monitoring_last_alert_status"] = current
 		except Exception:
 			status["last_warning_summary"] = "Alert delivery failed"
+	if current == FAILED and previous != FAILED:
+		send_message(format_critical_failure("automation", status["updated_at"], status["last_error_summary"], status["last_prematch_success"] or status["last_settlement_success"]))
+	elif current == HEALTHY and previous == FAILED:
+		send_message(format_recovery(status["updated_at"], status["last_prematch_success"]))
 	_write_json(state_path, state)
 	_write_json(base_dir / "reports" / "operations_status.json", status)
 	return status

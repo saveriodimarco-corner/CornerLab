@@ -16,6 +16,9 @@ from src.collector.collector_repository import CollectorRepository
 from src.operations.monitoring import refresh_operations_status
 from src.operations.prematch_runner import run_prematch
 from src.research.observation_freeze import settle_paper_trades
+from src.operations.telegram_notifier import format_prematch_completed, format_settlement_completed, notify_new_plays, send_message
+
+import pandas as pd
 
 
 def _utc_now() -> str:
@@ -129,6 +132,7 @@ def _run_job(
 			payload = {"job_id": job_id, "job_type": job_type, "outcome": "SUCCESS", "started_at": started_at, "completed_at": completed_at, "result": result}
 			_append_history(base_dir, {"job_id": job_id, "job_type": job_type, "started_at": started_at, "completed_at": completed_at, "status": "SUCCESS", "exit_code": 0, "fixtures_seen": int(collector.get("fixtures_fetched", 0)), "rows_inserted": int(collector.get("odds_writes", 0)), "rows_skipped": 0, "rows_settled": int(settlement.get("total_bets", 0)), "warning_count": len(result.get("validation_errors", [])), "error_summary": None, "provider_usage": result.get("provider_usage", {})})
 			_update_status(base_dir, job_type, "SUCCESS", completed_at, None, "UNLOCKED")
+			_notify_success(base_dir, job_type, result, completed_at)
 			return 0, payload
 	except JobAlreadyRunningError as exc:
 		completed_at = _utc_now()
@@ -142,6 +146,22 @@ def _run_job(
 		_append_history(base_dir, {**payload, "status": "FAILED", "exit_code": 1, "fixtures_seen": 0, "rows_inserted": 0, "rows_skipped": 0, "rows_settled": 0, "warning_count": 0, "error_summary": str(exc)})
 		_update_status(base_dir, job_type, "FAILED", completed_at, str(exc), "UNLOCKED")
 		return 1, payload
+
+
+def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], completed_at: str) -> None:
+	"""Optional notifications consume persisted/canonical outputs and never affect the job outcome."""
+	try:
+		if job_type == "prematch":
+			send_message(format_prematch_completed(result, completed_at))
+			report_path = base_dir / "reports" / "paper_trading_current.csv"
+			if report_path.exists():
+				notify_new_plays(base_dir, pd.read_csv(report_path))
+		elif job_type == "settlement":
+			summary = result.get("summary", result.get("settlement", {}))
+			if int(summary.get("total_bets", 0)) > 0:
+				send_message(format_settlement_completed(summary, completed_at))
+	except Exception:
+		return
 
 
 def run_prematch_job(base_dir: Path | str | None = None) -> tuple[int, dict[str, Any]]:
