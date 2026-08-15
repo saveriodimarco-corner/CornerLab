@@ -1,0 +1,22 @@
+[Unit]
+Description=CornerLab Telegram update worker
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+User=cornerlab
+Group=cornerlab
+WorkingDirectory=/srv/cornerlab
+EnvironmentFile=/etc/cornerlab/automation.env
+ExecStart=/usr/bin/docker compose -f /srv/cornerlab/docker-compose.production.yml run --rm --no-deps cornerlab python3 scripts/run_telegram_bot.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/srv/cornerlab/data /srv/cornerlab/reports
+
+[Install]
+WantedBy=multi-user.target
