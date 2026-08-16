@@ -220,3 +220,6 @@ __marimo__/
 # Temporary sprint workspaces
 tmp_*/
 tmp_sprint*/
+
+# CornerLab operational runtime state
+data/operations/
