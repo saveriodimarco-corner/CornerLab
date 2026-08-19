@@ -92,7 +92,7 @@ class LiveProviderAdapter:
             league_id = int(competition["league_id"])
             season = 2026
             try:
-                payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 7})
+                payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 10})
             except Exception:
                 payload = {}
 

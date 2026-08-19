@@ -273,3 +273,27 @@ def test_fetch_odds_uses_epl_sport_key_for_premier_league_fixture() -> None:
         assert rows
         assert captured['list_sport'] == 'soccer_epl'
         assert captured['odds_sport'] == 'soccer_epl'
+
+def test_fetch_fixtures_requests_ten_upcoming_matches_per_competition(monkeypatch):
+    from src.collector.collector_config import CollectorConfig
+    from src.collector.live_provider_adapter import LiveProviderAdapter
+
+    provider = LiveProviderAdapter(CollectorConfig(
+        api_football_key="test",
+        the_odds_api_key="test",
+    ))
+
+    calls = []
+
+    def fake_request(endpoint, params):
+        calls.append((endpoint, params.copy()))
+        return {"response": []}
+
+    monkeypatch.setattr(provider.api_football, "_perform_request", fake_request)
+
+    provider.fetch_fixtures()
+
+    assert len(calls) == len(provider.COMPETITIONS)
+    assert all(endpoint == "/fixtures" for endpoint, _ in calls)
+    assert all(params["season"] == 2026 for _, params in calls)
+    assert all(params["next"] == 10 for _, params in calls)
