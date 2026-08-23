@@ -15,8 +15,17 @@ from src.research.bankroll_tracker import BankrollTracker
 from src.exceptions import BankrollUnavailableError
 
 
-SUPPORTED_SERIE_A_MARKETS = ["over_9_5", "under_9_5", "over_10_5", "under_10_5"]
-UNSUPPORTED_SERIE_A_MARKETS = ["over_8_5", "under_8_5", "over_11_5", "under_11_5"]
+SUPPORTED_SERIE_A_MARKETS = [
+    "over_8_5",
+    "under_8_5",
+    "over_9_5",
+    "under_9_5",
+    "over_10_5",
+    "under_10_5",
+    "over_11_5",
+    "under_11_5",
+]
+UNSUPPORTED_SERIE_A_MARKETS = []
 CHECKPOINTS = [50, 100, 200]
 
 
@@ -78,29 +87,51 @@ def build_production_baseline_manifest(base_dir: Path | str | None = None, outpu
     model_artifacts: list[dict[str, Any]] = []
     feature_schema_hashes: dict[str, str] = {}
     target_to_model_map: dict[str, dict[str, Any]] = {}
-    for target_name in ["over_9_5", "over_10_5"]:
-        registry_key = f"serie_a/{target_name}"
-        bundle = bundles.get(registry_key)
-        if bundle is None:
-            continue
+    # Production probability engine:
+    # a single validated Poisson count model predicts expected total
+    # corners (mu). Probabilities for all operational O/U lines are
+    # derived from that same coherent count distribution.
+    count_target = "actual_total_corners"
+    registry_key = f"serie_a/{count_target}"
+    bundle = bundles.get(registry_key)
+
+    if bundle is not None:
         feature_schema_hash = _hash_values(bundle.get("schema", []))
-        model_info = {
-            "target_name": target_name,
+
+        count_model_info = {
+            "target_name": count_target,
             "competition": "Serie A",
-            "market_side": "OVER",
+            "market_side": "COUNT",
             "artifact_path": str(bundle["artifact_path"]),
             "artifact_hash": str(bundle["artifact_hash"]),
             "model_name": str(bundle.get("model_version")),
             "feature_schema_hash": feature_schema_hash,
         }
-        model_artifacts.append(model_info)
-        feature_schema_hashes[target_name] = feature_schema_hash
-        target_to_model_map[target_name] = model_info
-        target_to_model_map[target_name.replace("over_", "under_")] = {
-            **model_info,
-            "target_name": target_name.replace("over_", "under_"),
-            "market_side": "UNDER",
-        }
+
+        model_artifacts.append(count_model_info)
+        feature_schema_hashes[count_target] = feature_schema_hash
+
+        for line_target in [
+            "over_8_5",
+            "over_9_5",
+            "over_10_5",
+            "over_11_5",
+        ]:
+            target_to_model_map[line_target] = {
+                **count_model_info,
+                "target_name": line_target,
+                "market_side": "OVER",
+                "derived_from": count_target,
+            }
+
+            under_target = line_target.replace("over_", "under_")
+
+            target_to_model_map[under_target] = {
+                **count_model_info,
+                "target_name": under_target,
+                "market_side": "UNDER",
+                "derived_from": count_target,
+            }
 
     manifest = {
 		"release_version": "cornerlab-serie-a-v1.1",

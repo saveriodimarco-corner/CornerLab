@@ -234,6 +234,51 @@ def _load_authoritative_models(base_dir: Path) -> dict[str, dict[str, Any]]:
     manifests = _load_model_manifests(base_dir)
     bundles: dict[str, dict[str, Any]] = {}
     for competition_slug, manifest in manifests.items():
+
+        # ------------------------------------------------------------
+        # Production probability engine:
+        # load the accepted total-corners COUNT model when available.
+        #
+        # The count expectation (mu) is later converted to coherent
+        # O/U probabilities through the Poisson survival function.
+        # ------------------------------------------------------------
+        total_info = manifest.get("actual_total_corners")
+
+        if (
+            total_info
+            and bool(total_info.get("accepted"))
+            and not str(total_info.get("model_name", "")).endswith("baseline")
+        ):
+            total_model_name = str(total_info.get("model_name"))
+
+            total_artifact_path = _resolve_model_artifact_path(
+                base_dir,
+                competition_slug,
+                "actual_total_corners",
+                total_model_name,
+            )
+
+            # Keep backwards compatibility with test/research manifests
+            # that do not have a trained count-model artifact.
+            if total_artifact_path.exists():
+                total_blob = total_artifact_path.read_bytes()
+                total_model = pickle.loads(total_blob)
+
+                bundles[
+                    _model_registry_key(
+                        competition_slug,
+                        "actual_total_corners",
+                    )
+                ] = {
+                    "artifact_path": total_artifact_path,
+                    "artifact_hash": hashlib.sha256(total_blob).hexdigest(),
+                    "model": total_model,
+                    "schema": _extract_model_schema(total_model),
+                    "model_version": total_info.get("model_name"),
+                    "target_name": "actual_total_corners",
+                    "competition": competition_slug,
+                }
+
         for target_name in MARKET_LINE_TO_TARGET_NAME.values():
             info = manifest.get(target_name)
             if not info or not bool(info.get("accepted")) or str(info.get("model_name", "")).endswith("baseline"):
@@ -293,6 +338,29 @@ def _model_registry_key(competition_slug: str, target_name: str) -> str:
 
 
 def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+    # ------------------------------------------------------------
+    # Canonical team-name normalization.
+    #
+    # Live providers may use aliases that differ from the historical
+    # dataset. Without normalization the feature engine treats the
+    # same club as a completely new team.
+    # ------------------------------------------------------------
+    TEAM_ALIASES = {
+        "AC Milan": "Milan",
+        "AS Roma": "Roma",
+    }
+
+    fixtures = fixtures.copy()
+
+    for column in ["home_team", "away_team"]:
+        if column in fixtures.columns:
+            fixtures[column] = (
+                fixtures[column]
+                .astype(str)
+                .replace(TEAM_ALIASES)
+            )
+
     live_rows: list[pd.DataFrame] = []
     invalid_fixtures: dict[int, dict[str, Any]] = {}
     for _, fixture in fixtures.sort_values(["kickoff_utc", "fixture_id"]).iterrows():
@@ -353,7 +421,79 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
         ]
         if live_feature_row.empty:
             continue
-        live_rows.append(live_feature_row.iloc[[0]].copy())
+
+        live_feature_row = live_feature_row.iloc[[0]].copy()
+
+        # ------------------------------------------------------------
+        # Production fix:
+        # rest-day features must use the team's most recent real match,
+        # regardless of the competition played in that previous season.
+        #
+        # This is essential for promoted/relegated teams (e.g. Monza),
+        # otherwise Serie A live fixtures may incorrectly look back to
+        # the team's last Serie A appearance instead of its last match.
+        # ------------------------------------------------------------
+        fixture_ts = pd.to_datetime(
+            fixture["kickoff_utc"],
+            utc=True,
+            errors="coerce",
+        )
+
+        history_dates = pd.to_datetime(
+            historical_matches["date"],
+            utc=True,
+            errors="coerce",
+        )
+
+        def _real_rest_days(team_name: str):
+            team_mask = (
+                historical_matches["home_team"].astype(str).eq(team_name)
+                | historical_matches["away_team"].astype(str).eq(team_name)
+            )
+
+            dates = history_dates.loc[team_mask]
+            dates = dates[
+                dates.notna()
+                & (dates < fixture_ts)
+            ]
+
+            if dates.empty:
+                return None
+
+            last_match = dates.max()
+
+            return float(
+                (
+                    fixture_ts.normalize()
+                    - last_match.normalize()
+                ).days
+            )
+
+        real_home_rest = _real_rest_days(fixture_home)
+        real_away_rest = _real_rest_days(fixture_away)
+
+        if real_home_rest is not None:
+            live_feature_row.loc[
+                live_feature_row.index,
+                "home_rest_days",
+            ] = real_home_rest
+
+        if real_away_rest is not None:
+            live_feature_row.loc[
+                live_feature_row.index,
+                "away_rest_days",
+            ] = real_away_rest
+
+        if (
+            real_home_rest is not None
+            and real_away_rest is not None
+        ):
+            live_feature_row.loc[
+                live_feature_row.index,
+                "rest_days_difference",
+            ] = real_home_rest - real_away_rest
+
+        live_rows.append(live_feature_row)
 
     if not live_rows:
         feature_frame = pd.DataFrame()
@@ -558,43 +698,272 @@ def _build_odds_input(
             rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="UNSUPPORTED_MARKET", row_order=row_order, target_name=None))
             continue
 
-        competition_slug = _competition_slug(fixture_row.get("competition", "Serie A"))
-        registry_key = _model_registry_key(competition_slug, target_name)
-        if registry_key not in model_bundle:
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="NO_ACCEPTED_MODEL", row_order=row_order, target_name=target_name))
-            continue
+        competition_slug = _competition_slug(
+            fixture_row.get("competition", "Serie A")
+        )
 
-        bundle = model_bundle[registry_key]
-        try:
-            live_feature_frame = pd.DataFrame([feature_row_to_model_input(fixture_row, target_name)])
-        except InvalidFeatureDataError:
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
-        expected_features = bundle["schema"]
-        if not expected_features:
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
+        # ------------------------------------------------------------
+        # Serie A production engine:
+        #
+        # 1. Predict expected TOTAL corners (mu) with the validated
+        #    Poisson count model.
+        # 2. Convert mu into coherent line probabilities.
+        #
+        # This replaces the old behaviour where a count-regression
+        # output was clipped to [0, 1] and incorrectly treated as a
+        # probability.
+        # ------------------------------------------------------------
+        count_registry_key = _model_registry_key(
+            competition_slug,
+            "actual_total_corners",
+        )
 
-        schema_match, aligned_frame = _align_feature_schema(live_feature_frame, expected_features)
-        if not schema_match:
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
-        try:
-            feature_values = aligned_frame.to_numpy(dtype=float)
-        except (TypeError, ValueError):
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
-        if aligned_frame.isna().any().any() or not np.isfinite(feature_values).all():
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
+        if count_registry_key in model_bundle:
 
-        try:
-            over_probability = float(np.asarray(_predict_with_loaded_model(bundle["model"], aligned_frame)).reshape(-1)[0])
-        except Exception:
-            rows.append(_build_unavailable_row(fixture_row, odds_row, confidence_row, reason="MODEL_INPUT_FAILED", row_order=row_order, target_name=target_name))
-            continue
+            bundle = model_bundle[count_registry_key]
 
-        model_probability = _resolve_market_probability(market=str(odds_row.get("market", "")), side=str(odds_row.get("side", "")), over_probability=over_probability)
+            try:
+                live_feature_frame = pd.DataFrame(
+                    [
+                        feature_row_to_model_input(
+                            fixture_row,
+                            "actual_total_corners",
+                        )
+                    ]
+                )
+            except InvalidFeatureDataError:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            expected_features = bundle["schema"]
+
+            if not expected_features:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            schema_match, aligned_frame = _align_feature_schema(
+                live_feature_frame,
+                expected_features,
+            )
+
+            if not schema_match:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            try:
+                feature_values = aligned_frame.to_numpy(dtype=float)
+            except (TypeError, ValueError):
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            if (
+                aligned_frame.isna().any().any()
+                or not np.isfinite(feature_values).all()
+            ):
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            try:
+                raw_prediction = np.asarray(
+                    bundle["model"].predict(aligned_frame),
+                    dtype=float,
+                ).reshape(-1)
+
+                if len(raw_prediction) != 1:
+                    raise ValueError(
+                        "Count model returned unexpected prediction shape"
+                    )
+
+                predicted_total_corners = float(
+                    raw_prediction[0]
+                )
+
+                if (
+                    not np.isfinite(predicted_total_corners)
+                    or predicted_total_corners <= 0.0
+                ):
+                    raise ValueError(
+                        "Invalid expected total-corners prediction"
+                    )
+
+                line_value = float(line)
+                threshold = int(np.floor(line_value))
+
+                over_probability = float(
+                    poisson.sf(
+                        threshold,
+                        predicted_total_corners,
+                    )
+                )
+
+            except Exception:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+        else:
+            # --------------------------------------------------------
+            # Compatibility fallback for competitions where a validated
+            # total-corners count model is not yet available.
+            # --------------------------------------------------------
+            registry_key = _model_registry_key(
+                competition_slug,
+                target_name,
+            )
+
+            if registry_key not in model_bundle:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="NO_ACCEPTED_MODEL",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            bundle = model_bundle[registry_key]
+
+            try:
+                live_feature_frame = pd.DataFrame(
+                    [
+                        feature_row_to_model_input(
+                            fixture_row,
+                            target_name,
+                        )
+                    ]
+                )
+            except InvalidFeatureDataError:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            expected_features = bundle["schema"]
+
+            schema_match, aligned_frame = _align_feature_schema(
+                live_feature_frame,
+                expected_features,
+            )
+
+            if not schema_match:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+            try:
+                feature_values = aligned_frame.to_numpy(dtype=float)
+
+                if (
+                    aligned_frame.isna().any().any()
+                    or not np.isfinite(feature_values).all()
+                ):
+                    raise ValueError("Invalid model input")
+
+                over_probability = float(
+                    np.asarray(
+                        _predict_with_loaded_model(
+                            bundle["model"],
+                            aligned_frame,
+                        )
+                    ).reshape(-1)[0]
+                )
+
+                predicted_total_corners = float(
+                    confidence_row.get(
+                        "predicted_total_corners",
+                        np.nan,
+                    )
+                )
+
+            except Exception:
+                rows.append(
+                    _build_unavailable_row(
+                        fixture_row,
+                        odds_row,
+                        confidence_row,
+                        reason="MODEL_INPUT_FAILED",
+                        row_order=row_order,
+                        target_name=target_name,
+                    )
+                )
+                continue
+
+        model_probability = _resolve_market_probability(
+            market=str(odds_row.get("market", "")),
+            side=str(odds_row.get("side", "")),
+            over_probability=over_probability,
+        )
 
         rows.append(
             {
@@ -628,7 +997,7 @@ def _build_odds_input(
                 "model_confidence": float(confidence_row.get("model_confidence", 0.0)),
                 "confidence_score": float(confidence_row.get("confidence_score", 0.0)),
                 "decision_state": confidence_row.get("decision_state"),
-                "predicted_total_corners": float(confidence_row.get("predicted_total_corners", np.nan)),
+                "predicted_total_corners": float(predicted_total_corners),
                 "data_quality_score": float(confidence_row.get("data_quality_score", np.nan)),
                 "insufficient_history": bool(confidence_row.get("insufficient_history", False)),
                 "home_matches_played": float(confidence_row.get("home_matches_played", np.nan)),
