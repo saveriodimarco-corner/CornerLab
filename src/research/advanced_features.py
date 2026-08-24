@@ -7,11 +7,23 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
+from src.engine.feature_store import FeatureStore
+
 
 DEFAULT_EWMA_ALPHA = 0.3
 
 FEATURE_DOCUMENTATION = {
     "match_id": "Canonical fixture identifier copied from the historical match dataset.",
+    "home_offensive_elo": "Pre-match offensive Elo rating for the home team, updated from prior corner outcomes.",
+    "away_offensive_elo": "Pre-match offensive Elo rating for the away team, updated from prior corner outcomes.",
+    "home_defensive_elo": "Pre-match defensive Elo rating for the home team, updated from prior corner outcomes.",
+    "away_defensive_elo": "Pre-match defensive Elo rating for the away team, updated from prior corner outcomes.",
+    "offensive_elo_difference": "Difference between the home and away offensive Elo ratings before kickoff.",
+    "defensive_elo_difference": "Difference between the home and away defensive Elo ratings before kickoff.",
+    "expected_corner_strength": "Expected corner strength derived from the pre-match Elo ratings.",
+    "elo_momentum_last5": "Average change in the home team's Elo ratings over the last five matches.",
+    "elo_trend_last10": "Average change in the home team's Elo ratings over the last ten matches.",
+    "elo_variation": "Variation of the home team's recent Elo movements over the last five matches.",
     "season": "Competition season for the match.",
     "date": "Match date in ISO format.",
     "home_team": "Home team name.",
@@ -53,6 +65,14 @@ FEATURE_DOCUMENTATION = {
     "expected_home_corners_baseline": "Baseline expectation for the home team’s corners.",
     "expected_away_corners_baseline": "Baseline expectation for the away team’s corners.",
     "expected_total_corners_baseline": "Baseline expectation for total corners in the matchup.",
+    "expected_home_corners": "Pre-match expected home corners from the expected-corner model.",
+    "expected_away_corners": "Pre-match expected away corners from the expected-corner model.",
+    "expected_total_corners": "Pre-match expected total corners from the expected-corner model.",
+    "expected_home_corner_difference": "Difference between the expected-corner model and the baseline home-corner expectation.",
+    "expected_away_corner_difference": "Difference between the expected-corner model and the baseline away-corner expectation.",
+    "expected_corner_delta": "Difference between the expected-corner model and the baseline total-corner expectation.",
+    "expected_corner_confidence": "Confidence score for the expected-corner model based on available history.",
+    "expected_corner_error_history": "Average absolute residual of prior expected-corner predictions.",
     "attack_difference": "Difference between the home and away teams’ recent corners-for averages.",
     "defence_difference": "Difference between the home and away teams’ recent corners-against averages.",
     "tempo_difference": "Difference between the home and away teams’ recent total-corners averages.",
@@ -73,11 +93,7 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
     base_dir = resolve_base_dir(base_dir)
     output_dir = Path(output_dir) if output_dir is not None else base_dir
 
-    matches_path = resolve_matches_path(base_dir)
-    if not matches_path.exists():
-        raise FileNotFoundError(f"Historical match data not found: {matches_path}")
-
-    matches = pd.read_parquet(matches_path)
+    matches = load_historical_matches_frame(base_dir)
     if matches.empty:
         raise ValueError("Historical match data is empty")
 
@@ -86,12 +102,21 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
     if working["date"].isna().any():
         raise ValueError("Match dates must be valid")
 
-    working = working.sort_values(["season", "date", "fixture_id"]).reset_index(drop=True)
+    if "competition" not in working.columns:
+        working["competition"] = "Serie A"
+
+    working = working.sort_values(["competition", "season", "date", "fixture_id"]).reset_index(drop=True)
     working["match_id"] = working["fixture_id"].astype(int)
 
     rows: List[Dict[str, Any]] = []
     team_history: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    team_history_state: Dict[str, Dict[str, List[float]]] = {}
+    prior_state: Dict[str, Dict[str, float]] = {}
+    league_state: Dict[str, Dict[str, List[float]]] = {}
     season_match_counter: Dict[str, int] = defaultdict(int)
+    elo_state: Dict[str, Dict[str, Any]] = {}
+    corner_model_error_history: List[float] = []
+    feature_store = FeatureStore()
 
     for idx, row in working.iterrows():
         season = str(row["season"])
@@ -106,6 +131,11 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
 
         home_history = team_history[home_team]
         away_history = team_history[away_team]
+
+        home_state = elo_state.setdefault(home_team, _init_team_elo_state(season=season))
+        away_state = elo_state.setdefault(away_team, _init_team_elo_state(season=season))
+        _apply_season_regression(home_state, season=season)
+        _apply_season_regression(away_state, season=season)
 
         home_recent_for = _rolling_stats(home_history, kind="for")
         home_recent_against = _rolling_stats(home_history, kind="against")
@@ -164,6 +194,19 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
         expected_away_corners_baseline = 0.5 * (away_last5_for + home_last5_against)
         expected_total_corners_baseline = 0.5 * (home_last5_total + away_last5_total)
 
+        prior_matches = working.iloc[:idx].copy()
+        feature_row = feature_store._create_feature_row(
+            row,
+            prior_matches,
+            prior_state=prior_state,
+            team_history=team_history_state,
+            league_state=league_state,
+            season=season,
+        )
+        expected_home_corner = float(feature_row["expected_home_corner"])
+        expected_away_corner = float(feature_row["expected_away_corner"])
+        expected_total_corner = float(feature_row["expected_total_corner"])
+
         attack_difference = home_last5_for - away_last5_for
         defence_difference = home_last5_against - away_last5_against
         tempo_difference = home_last5_total - away_last5_total
@@ -177,12 +220,37 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
         home_matches_played = len([entry for entry in home_history if str(entry["season"]) == season])
         away_matches_played = len([entry for entry in away_history if str(entry["season"]) == season])
 
+        home_offensive_elo = float(home_state["offensive_elo"])
+        away_offensive_elo = float(away_state["offensive_elo"])
+        home_defensive_elo = float(home_state["defensive_elo"])
+        away_defensive_elo = float(away_state["defensive_elo"])
+        offensive_elo_difference = home_offensive_elo - away_offensive_elo
+        defensive_elo_difference = home_defensive_elo - away_defensive_elo
+
+        expected_home_corners = 8.5 + (home_offensive_elo - away_defensive_elo) / 150.0 + (home_defensive_elo - away_offensive_elo) / 300.0
+        expected_away_corners = 8.5 + (away_offensive_elo - home_defensive_elo) / 150.0 + (away_defensive_elo - home_offensive_elo) / 300.0
+        expected_corner_strength = (expected_home_corners + expected_away_corners) / 2.0
+        expected_home_corners_model = float(np.clip(0.55 * expected_home_corners_baseline + 0.25 * home_last5_for + 0.20 * ((home_offensive_elo - away_defensive_elo) / 120.0), 0.0, 20.0))
+        expected_away_corners_model = float(np.clip(0.55 * expected_away_corners_baseline + 0.25 * away_last5_for + 0.20 * ((away_offensive_elo - home_defensive_elo) / 120.0), 0.0, 20.0))
+        expected_total_corners_model = float(np.clip(expected_home_corners_model + expected_away_corners_model, 0.0, 40.0))
+        expected_home_corner_difference = float(expected_home_corners_model - expected_home_corners_baseline)
+        expected_away_corner_difference = float(expected_away_corners_model - expected_away_corners_baseline)
+        expected_corner_delta = float(expected_total_corners_model - expected_total_corners_baseline)
         data_quality_score = min(1.0, max(0.0, len(home_history) / 10.0))
+        expected_corner_confidence = float(np.clip(0.15 + 0.04 * min(len(home_history), 10) + 0.04 * min(len(away_history), 10) + 0.20 * data_quality_score, 0.0, 1.0))
+        expected_corner_error_history = float(np.mean(corner_model_error_history)) if corner_model_error_history else 0.0
+
+        home_recent_delta_series = home_state["recent_delta_series"]
+        elo_momentum_last5 = float(np.mean(home_recent_delta_series[-5:])) if home_recent_delta_series else 0.0
+        elo_trend_last10 = float(np.mean(home_recent_delta_series[-10:])) if home_recent_delta_series else 0.0
+        elo_variation = float(np.std(home_recent_delta_series[-5:])) if len(home_recent_delta_series) >= 2 else 0.0
+
         insufficient_history = len(home_history) < 5
 
         rows.append(
             {
                 "match_id": int(row["fixture_id"]),
+                "competition": str(row.get("competition", "Serie A")),
                 "season": season,
                 "date": row["date"].strftime("%Y-%m-%d"),
                 "home_team": home_team,
@@ -193,6 +261,9 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
                 "actual_home_corners": home_corners,
                 "actual_away_corners": away_corners,
                 "actual_total_corners": total_corners,
+                "expected_home_corner": expected_home_corner,
+                "expected_away_corner": expected_away_corner,
+                "expected_total_corner": expected_total_corner,
                 "over_8_5": int(total_corners > 8.5),
                 "over_9_5": int(total_corners > 9.5),
                 "over_10_5": int(total_corners > 10.5),
@@ -227,6 +298,19 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
                 "expected_home_corners_baseline": expected_home_corners_baseline,
                 "expected_away_corners_baseline": expected_away_corners_baseline,
                 "expected_total_corners_baseline": expected_total_corners_baseline,
+                "home_attack_rating": feature_row["home_attack_rating"],
+                "away_attack_rating": feature_row["away_attack_rating"],
+                "rolling_attack_rating_last5": feature_row["rolling_attack_rating_last5"],
+                "rolling_attack_rating_last10": feature_row["rolling_attack_rating_last10"],
+                "home_defense_rating": feature_row["home_defense_rating"],
+                "away_defense_rating": feature_row["away_defense_rating"],
+                "rolling_defense_rating_last5": feature_row["rolling_defense_rating_last5"],
+                "rolling_defense_rating_last10": feature_row["rolling_defense_rating_last10"],
+                "attack_minus_defense": feature_row["attack_minus_defense"],
+                "home_attack_vs_away_defense": feature_row["home_attack_vs_away_defense"],
+                "away_attack_vs_home_defense": feature_row["away_attack_vs_home_defense"],
+                "attack_percentile": feature_row["attack_percentile"],
+                "defense_percentile": feature_row["defense_percentile"],
                 "attack_difference": attack_difference,
                 "defence_difference": defence_difference,
                 "tempo_difference": tempo_difference,
@@ -238,28 +322,82 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
                 "home_matches_played": int(home_matches_played),
                 "away_matches_played": int(away_matches_played),
                 "season_match_number": int(season_match_number),
+                "home_offensive_elo": home_offensive_elo,
+                "away_offensive_elo": away_offensive_elo,
+                "home_defensive_elo": home_defensive_elo,
+                "away_defensive_elo": away_defensive_elo,
+                "offensive_elo_difference": offensive_elo_difference,
+                "defensive_elo_difference": defensive_elo_difference,
+                "expected_corner_strength": expected_corner_strength,
+                "expected_home_corners": expected_home_corners_model,
+                "expected_away_corners": expected_away_corners_model,
+                "expected_total_corners": expected_total_corners_model,
+                "expected_home_corner_difference": expected_home_corner_difference,
+                "expected_away_corner_difference": expected_away_corner_difference,
+                "expected_corner_delta": expected_corner_delta,
+                "expected_corner_confidence": expected_corner_confidence,
+                "expected_corner_error_history": expected_corner_error_history,
+                "elo_momentum_last5": elo_momentum_last5,
+                "elo_trend_last10": elo_trend_last10,
+                "elo_variation": elo_variation,
                 "data_quality_score": float(data_quality_score),
                 "insufficient_history": bool(insufficient_history),
             }
         )
 
+        k_factor = _adaptive_k_factor(max(len(home_state["recent_delta_series"]), len(away_state["recent_delta_series"])))
+        home_offense_residual = home_corners - expected_home_corners
+        away_offense_residual = away_corners - expected_away_corners
+        home_defense_residual = away_corners - expected_away_corners
+        away_defense_residual = home_corners - expected_home_corners
+
+        next_home_offensive = float(np.clip(home_offensive_elo + k_factor * home_offense_residual / 8.0, 800.0, 2200.0))
+        next_home_defensive = float(np.clip(home_defensive_elo - k_factor * home_defense_residual / 8.0, 800.0, 2200.0))
+        next_away_offensive = float(np.clip(away_offensive_elo + k_factor * away_offense_residual / 8.0, 800.0, 2200.0))
+        next_away_defensive = float(np.clip(away_defensive_elo - k_factor * away_defense_residual / 8.0, 800.0, 2200.0))
+
+        home_state["offensive_elo"] = next_home_offensive
+        home_state["defensive_elo"] = next_home_defensive
+        away_state["offensive_elo"] = next_away_offensive
+        away_state["defensive_elo"] = next_away_defensive
+
+        home_combined_delta = ((next_home_offensive - home_offensive_elo) + (next_home_defensive - home_defensive_elo)) / 2.0
+        away_combined_delta = ((next_away_offensive - away_offensive_elo) + (next_away_defensive - away_defensive_elo)) / 2.0
+        home_state["recent_delta_series"].append(home_combined_delta)
+        away_state["recent_delta_series"].append(away_combined_delta)
+        home_state["season"] = season
+        away_state["season"] = season
+
         team_history[home_team].append(
             {
-                "date": row["date"],
-                "season": season,
                 "for_value": home_corners,
                 "against_value": away_corners,
                 "total_value": total_corners,
+                "date": row["date"],
+                "season": season,
             }
         )
         team_history[away_team].append(
             {
-                "date": row["date"],
-                "season": season,
                 "for_value": away_corners,
                 "against_value": home_corners,
                 "total_value": total_corners,
+                "date": row["date"],
+                "season": season,
             }
+        )
+
+        corner_model_error_history.append(float(abs(home_corners - expected_home_corners_model) + abs(away_corners - expected_away_corners_model)))
+        if len(corner_model_error_history) > 25:
+            corner_model_error_history = corner_model_error_history[-25:]
+
+        feature_store._update_state(
+            prior_state,
+            team_history_state,
+            row,
+            league_state=league_state,
+            season=season,
+            competition=str(row.get("competition", "Serie A")),
         )
 
     dataset = pd.DataFrame(rows)
@@ -296,6 +434,41 @@ def resolve_matches_path(base_dir: Path) -> Path:
         if candidate.exists():
             return candidate
     return candidates[0]
+
+
+def load_historical_matches_frame(base_dir: Path) -> pd.DataFrame:
+    paths = resolve_matches_paths(base_dir)
+    if not paths:
+        raise FileNotFoundError(f"Historical match data not found under: {base_dir / 'data' / 'processed'}")
+    frames: list[pd.DataFrame] = []
+    for path in paths:
+        frame = pd.read_parquet(path)
+        if frame.empty:
+            continue
+        if "competition" not in frame.columns:
+            competition_name = "Serie B" if "serie_b" in path.stem.lower() else "Serie A"
+            frame = frame.copy()
+            frame["competition"] = competition_name
+        frames.append(frame)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def resolve_matches_paths(base_dir: Path) -> list[Path]:
+    repo_root = Path(__file__).resolve().parents[2]
+    base_root = base_dir / "data" / "processed"
+    if base_root.exists() and any(base_root.glob("*_matches.parquet")):
+        search_roots = [base_root]
+    else:
+        search_roots = [base_root, repo_root / "data" / "processed"]
+    collected: dict[str, Path] = {}
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for candidate in sorted(root.glob("*_matches.parquet")):
+            collected.setdefault(candidate.name, candidate)
+    return list(collected.values())
 
 
 def _rolling_stats(history: List[Dict[str, Any]], kind: str) -> float:
@@ -360,6 +533,27 @@ def _rest_days(history: List[Dict[str, Any]], current_date: pd.Timestamp) -> int
     return int((current_date - last_date).days)
 
 
+def _init_team_elo_state(season: str) -> Dict[str, Any]:
+    return {
+        "season": season,
+        "offensive_elo": 1500.0,
+        "defensive_elo": 1500.0,
+        "recent_delta_series": [],
+    }
+
+
+def _apply_season_regression(team_state: Dict[str, Any], season: str) -> None:
+    if team_state.get("season") == season:
+        return
+    team_state["offensive_elo"] = 1500.0 + 0.75 * (team_state["offensive_elo"] - 1500.0)
+    team_state["defensive_elo"] = 1500.0 + 0.75 * (team_state["defensive_elo"] - 1500.0)
+    team_state["season"] = season
+
+
+def _adaptive_k_factor(history_length: int) -> float:
+    return float(np.clip(35.0 - 1.75 * min(history_length, 12), 10.0, 35.0))
+
+
 def _clean_feature_frame(dataset: pd.DataFrame) -> pd.DataFrame:
     feature_frame = dataset.copy()
     feature_frame["date"] = feature_frame["date"].astype(str)
@@ -373,14 +567,14 @@ def _clean_feature_frame(dataset: pd.DataFrame) -> pd.DataFrame:
     feature_frame["insufficient_history"] = feature_frame["insufficient_history"].astype(bool)
 
     for column in feature_frame.columns:
-        if column in {"match_id", "season", "date", "home_team", "away_team"}:
+        if column in {"match_id", "competition", "season", "date", "home_team", "away_team"}:
             continue
         if column in {"insufficient_history"}:
             continue
         feature_frame[column] = pd.to_numeric(feature_frame[column], errors="coerce")
 
     for column in feature_frame.columns:
-        if column in {"match_id", "season", "date", "home_team", "away_team", "insufficient_history"}:
+        if column in {"match_id", "competition", "season", "date", "home_team", "away_team", "insufficient_history"}:
             continue
         feature_frame[column] = feature_frame[column].fillna(0.0)
         feature_frame[column] = feature_frame[column].replace([np.inf, -np.inf], 0.0)
@@ -401,7 +595,7 @@ def build_validation_report(dataset: pd.DataFrame) -> str:
     numeric_columns = [
         column
         for column in dataset.columns
-        if column not in {"match_id", "season", "date", "home_team", "away_team", "insufficient_history"}
+        if column not in {"match_id", "competition", "season", "date", "home_team", "away_team", "insufficient_history"}
     ]
     numeric_frame = dataset[numeric_columns].apply(pd.to_numeric, errors="coerce")
     numeric_frame = numeric_frame.fillna(0.0).replace([np.inf, -np.inf], 0.0)
@@ -429,7 +623,7 @@ def build_validation_report(dataset: pd.DataFrame) -> str:
         "# Advanced Feature Validation",
         "",
         f"- Rows: {len(dataset)}",
-        f"- Generated features: {len([column for column in dataset.columns if column not in {'match_id', 'season', 'date', 'home_team', 'away_team', 'home_corners', 'away_corners', 'total_corners', 'actual_home_corners', 'actual_away_corners', 'actual_total_corners', 'over_8_5', 'over_9_5', 'over_10_5', 'over_11_5'}])}",
+        f"- Generated features: {len([column for column in dataset.columns if column not in {'match_id', 'competition', 'season', 'date', 'home_team', 'away_team', 'home_corners', 'away_corners', 'total_corners', 'actual_home_corners', 'actual_away_corners', 'actual_total_corners', 'over_8_5', 'over_9_5', 'over_10_5', 'over_11_5'}])}",
         "- Missing value counts:",
         *[f"  - {column}: {count}" for column, count in missing_value_counts.items() if count > 0],
         "- Infinite value counts:",

@@ -101,6 +101,21 @@ class CollectorRepository:
                     readiness_verdict TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS operation_runs (
+                    run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    status TEXT,
+                    pipeline_version TEXT,
+                    dataset_version TEXT,
+                    model_name TEXT,
+                    prediction_count INTEGER,
+                    decision_count INTEGER,
+                    runtime_seconds REAL,
+                    errors TEXT,
+                    warnings TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS collector_errors (
                     error_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     provider TEXT,
@@ -211,14 +226,25 @@ class CollectorRepository:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
+            bookmaker = str(payload.get("bookmaker") or "unknown")
+            market = str(payload.get("market") or "UNKNOWN")
+            conn.execute(
+                "INSERT OR IGNORE INTO collector_bookmakers (bookmaker, provider, created_at) VALUES (?, ?, ?)",
+                (bookmaker, payload.get("provider"), self.config.now_utc()),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO collector_markets (market_name, provider, created_at) VALUES (?, ?, ?)",
+                (market, payload.get("provider"), self.config.now_utc()),
+            )
+
             payload_ts = payload.get("snapshot_timestamp")
             payload_odds = payload.get("decimal_odds")
             existing_rows = conn.execute(
                 "SELECT * FROM collector_odds_snapshots WHERE fixture_id = ? AND bookmaker = ? AND market = ? AND line = ? AND side = ?",
                 (
                     payload["fixture_id"],
-                    payload.get("bookmaker"),
-                    payload.get("market"),
+                    bookmaker,
+                    market,
                     payload.get("line"),
                     payload.get("side"),
                 ),
@@ -231,26 +257,37 @@ class CollectorRepository:
                         return None
                 except Exception:
                     continue
-            cur = conn.execute(
-                """
-                INSERT INTO collector_odds_snapshots (fixture_id, bookmaker, market, line, side, decimal_odds, snapshot_timestamp, minutes_to_kickoff, provider, provider_event_id, raw_response_hash, import_timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    payload["fixture_id"],
-                    payload.get("bookmaker"),
-                    payload.get("market"),
-                    payload.get("line"),
-                    payload.get("side"),
-                    payload.get("decimal_odds"),
-                    payload.get("snapshot_timestamp"),
-                    payload.get("minutes_to_kickoff"),
-                    payload.get("provider"),
-                    payload.get("provider_event_id"),
-                    payload.get("raw_response_hash"),
-                    payload.get("import_timestamp"),
-                ),
-            )
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO collector_odds_snapshots (fixture_id, bookmaker, market, line, side, decimal_odds, snapshot_timestamp, minutes_to_kickoff, provider, provider_event_id, raw_response_hash, import_timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        payload["fixture_id"],
+                        bookmaker,
+                        market,
+                        payload.get("line"),
+                        payload.get("side"),
+                        payload.get("decimal_odds"),
+                        payload.get("snapshot_timestamp"),
+                        payload.get("minutes_to_kickoff"),
+                        payload.get("provider"),
+                        payload.get("provider_event_id"),
+                        payload.get("raw_response_hash"),
+                        payload.get("import_timestamp"),
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                # Exact duplicate snapshot:
+                # the database UNIQUE constraint is the final
+                # idempotency guard. Only suppress that specific
+                # collision; propagate every other integrity error.
+                if "UNIQUE constraint failed: collector_odds_snapshots." in str(exc):
+                    conn.rollback()
+                    return None
+                raise
+
             conn.commit()
             return {**payload, "snapshot_id": cur.lastrowid}
         finally:
@@ -353,6 +390,33 @@ class CollectorRepository:
                     genuine_corner_odds_stored,
                     completed_fixtures_resolved,
                     readiness_verdict,
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+        finally:
+            conn.close()
+
+    def record_operation_run(self, status: str, pipeline_version: str, prediction_count: int = 0, decision_count: int = 0, runtime_seconds: Optional[float] = None, errors: Optional[List[str]] = None, warnings: Optional[List[str]] = None, dataset_version: Optional[str] = None, model_name: Optional[str] = None, started_at: Optional[str] = None, completed_at: Optional[str] = None) -> int:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO operation_runs (started_at, completed_at, status, pipeline_version, dataset_version, model_name, prediction_count, decision_count, runtime_seconds, errors, warnings)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    started_at or self.config.now_utc(),
+                    completed_at or self.config.now_utc(),
+                    status,
+                    pipeline_version,
+                    dataset_version,
+                    model_name,
+                    int(prediction_count),
+                    int(decision_count),
+                    runtime_seconds,
+                    "\n".join(errors or []),
+                    "\n".join(warnings or []),
                 ),
             )
             conn.commit()

@@ -90,18 +90,106 @@ def test_build_live_fixture_features_uses_historical_state() -> None:
     assert confidence_frame.iloc[0]["combined_volatility"] >= 0
 
 
-def test_run_paper_trading_writes_current_artifacts(tmp_path: Path) -> None:
-    result = run_paper_trading(base_dir=Path.cwd(), output_dir=tmp_path, bankroll=100.0)
+def test_run_paper_trading_writes_current_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixtures = pd.DataFrame(
+        [
+            {
+                "fixture_id": 900001,
+                "match_id": 900001,
+                "provider_fixture_id": "evt-deterministic-1",
+                "competition": "Serie A",
+                "season": "2026/27",
+                "kickoff_utc": "2026-08-25T18:45:00Z",
+                "date": "2026-08-25",
+                "home_team": "Inter",
+                "away_team": "Roma",
+                "status": "NS",
+                "provider": "api-football",
+            }
+        ]
+    )
+
+    odds_rows = []
+
+    for line in ["8.5", "9.5", "10.5", "11.5"]:
+        for side, market, price in [
+            ("OVER", "TOTAL_CORNERS_OVER", 1.95),
+            ("UNDER", "TOTAL_CORNERS_UNDER", 1.95),
+        ]:
+            odds_rows.append(
+                {
+                    "match_id": 900001,
+                    "fixture_date": "2026-08-25",
+                    "home_team": "Inter",
+                    "away_team": "Roma",
+                    "bookmaker": "TESTBOOK",
+                    "market": market,
+                    "line": line,
+                    "side": side,
+                    "opening_odds": price,
+                    "closing_odds": price,
+                    "odds_timestamp": "2026-08-25T10:00:00Z",
+                    "source": "the-odds-api",
+                    "source_fixture_id": "evt-deterministic-1",
+                    "is_closing": True,
+                    "currency": "EUR",
+                    "import_timestamp": "2026-08-25T10:00:00Z",
+                }
+            )
+
+    odds = pd.DataFrame(odds_rows)
+
+    monkeypatch.setattr(
+        "src.research.paper_trading._load_live_fixtures_and_odds",
+        lambda _base_dir: (fixtures.copy(), odds.copy()),
+    )
+
+    result = run_paper_trading(
+        base_dir=Path.cwd(),
+        output_dir=tmp_path,
+        bankroll=100.0,
+    )
 
     report = result["report"]
     assert not report.empty
     assert set(report["decision"].unique()).issubset({"PLAY", "LOW CONFIDENCE", "NO BET", "MODEL_UNAVAILABLE"})
-    assert (report["decision"] == "MODEL_UNAVAILABLE").any()
     assert set(report.loc[report["decision"] == "MODEL_UNAVAILABLE", "decision_reason"].unique()).issubset({"NO_ACCEPTED_MODEL", "MODEL_INPUT_FAILED", "UNSUPPORTED_MARKET"})
-    unsupported_targets = report.loc[report["market_support_status"] == "UNSUPPORTED", "target_name"].dropna().unique().tolist()
-    assert "over_8_5" in unsupported_targets
-    assert "over_11_5" in unsupported_targets
-    assert (report.loc[report["target_name"].isin(["over_8_5", "over_11_5"]), "decision"] == "MODEL_UNAVAILABLE").all()
+    # Serie A production contract:
+    # the authoritative total-corners Poisson model scores all four
+    # operational lines. Unsupported rows may belong to competitions
+    # without an accepted production count model (e.g. Premier League).
+    serie_a = report.loc[
+        report["competition"].astype(str).eq("Serie A")
+    ].copy()
+
+    for target_name in [
+        "over_8_5",
+        "over_9_5",
+        "over_10_5",
+        "over_11_5",
+    ]:
+        target_rows = serie_a.loc[
+            serie_a["target_name"].astype(str).eq(target_name)
+        ]
+
+        assert not target_rows.empty
+        assert target_rows["market_support_status"].eq("SUPPORTED").all()
+        assert target_rows["scoring_status"].eq("SCORED").all()
+        assert target_rows["model_version"].eq("poisson_regression").all()
+
+    unsupported_operational = report.loc[
+        report["target_name"].isin(
+            ["over_8_5", "over_9_5", "over_10_5", "over_11_5"]
+        )
+        & report["market_support_status"].eq("UNSUPPORTED")
+    ]
+
+    assert not unsupported_operational[
+        "competition"
+    ].astype(str).eq("Serie A").any()
     assert (report["market"] == "TOTAL_CORNERS_UNDER").any()
     assert "run_id" in report.columns
     assert "decision_timestamp" in report.columns
@@ -142,11 +230,38 @@ def test_production_manifest_and_settlement_outputs_are_written(tmp_path: Path) 
     finally:
         conn.close()
 
-    manifest = build_production_baseline_manifest(base_dir=tmp_path, output_dir=tmp_path)
+    manifest = build_production_baseline_manifest(
+        base_dir=Path.cwd(),
+        output_dir=tmp_path,
+    )
     settlement = settle_paper_trades(base_dir=tmp_path, output_dir=tmp_path, bankroll_start=100.0)
 
     assert (tmp_path / "reports" / "production_baseline_serie_a.json").exists()
-    assert manifest["supported_targets"] == ["over_9_5", "under_9_5", "over_10_5", "under_10_5"]
+    assert manifest["supported_targets"] == [
+        "over_8_5",
+        "under_8_5",
+        "over_9_5",
+        "under_9_5",
+        "over_10_5",
+        "under_10_5",
+        "over_11_5",
+        "under_11_5",
+    ]
+
+    serie_a_registry = manifest[
+        "supported_market_registry"
+    ]["Serie A"]["model_registry"]
+
+    for target_name in manifest["supported_targets"]:
+        model_info = serie_a_registry[target_name]
+
+        assert model_info["model_name"] == "poisson_regression"
+        assert model_info["derived_from"] == "actual_total_corners"
+
+    assert (
+        manifest["model_artifacts"][0]["target_name"]
+        == "actual_total_corners"
+    )
     assert (tmp_path / "reports" / "paper_trading_performance.json").exists()
     assert settlement["summary"]["total_bets"] == 1
     assert settlement["summary"]["profit_loss"] > 0
