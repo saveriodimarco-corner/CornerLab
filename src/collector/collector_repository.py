@@ -365,8 +365,23 @@ class CollectorRepository:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
-            row = conn.execute("SELECT provider, SUM(requests_used) AS requests_used, MAX(requests_remaining) AS requests_remaining, SUM(rate_limited) AS rate_limited FROM collector_provider_usage WHERE provider = ? GROUP BY provider", (provider,)).fetchone()
-            return dict(row) if row is not None else {"provider": provider, "requests_used": 0, "requests_remaining": 0, "rate_limited": 0}
+            row = conn.execute(
+                """
+                SELECT provider, requests_used, requests_remaining,
+                       rate_limited, created_at
+                FROM collector_provider_usage
+                WHERE provider = ?
+                ORDER BY usage_id DESC
+                LIMIT 1
+                """,
+                (provider,),
+            ).fetchone()
+            return dict(row) if row is not None else {
+                "provider": provider,
+                "requests_used": 0,
+                "requests_remaining": 0,
+                "rate_limited": 0,
+            }
         finally:
             conn.close()
 

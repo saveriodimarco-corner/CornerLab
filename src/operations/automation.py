@@ -153,10 +153,48 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 	"""Optional notifications consume persisted/canonical outputs and never affect the job outcome."""
 	try:
 		if job_type == "prematch":
+			collector = result.get("collector", {})
+			quota_remaining = collector.get("quota_remaining")
+			quota_check_error = collector.get("quota_check_error")
+
+			# Fail closed: never issue actionable betting alerts when provider
+			# quota is exhausted OR cannot be verified.
+			if quota_remaining is None:
+				send_message(
+					"🚨 CORNERLAB — STATO QUOTE NON VERIFICABILE\n\n"
+					"Il controllo quota di The Odds API non è riuscito.\n"
+					"Nessuna PLAY viene inviata finché la disponibilità delle quote non è verificata.\n\n"
+					f"Dettaglio: {quota_check_error or 'quota status unknown'}\n"
+					f"Ora: {completed_at}"
+				)
+				return
+
+			if int(quota_remaining) <= 0:
+				send_message(
+					"🚨 CORNERLAB — PREMATCH NON OPERATIVO PER LE QUOTE\n\n"
+					"Analisi eseguita, ma The Odds API ha 0 crediti disponibili.\n"
+					"Nessuna PLAY viene inviata finché le quote non possono essere aggiornate.\n\n"
+					f"Ora: {completed_at}"
+				)
+				return
+
 			report_path = base_dir / "reports" / "paper_trading_current.csv"
+			sent = 0
 			if report_path.exists():
 				report = pd.read_csv(report_path)
-				_offer_bet_confirmations(base_dir, report)
+				sent = _offer_bet_confirmations(base_dir, report)
+
+			# A scheduled prematch must never end silently. When no new
+			# actionable alert was delivered, explicitly confirm the successful run.
+			if sent == 0:
+				send_message(
+					"✅ CORNERLAB — ANALISI COMPLETATA\n\n"
+					"Nessuna nuova PLAY da inviare.\n"
+					f"Fixture analizzate: {int(collector.get('fixtures_fetched', 0))}\n"
+					f"Quote aggiornate: {int(collector.get('odds_writes', 0))}\n"
+					f"Ora: {completed_at}"
+				)
+
 		elif job_type == "settlement":
 			summary = result.get("summary", result.get("settlement", {}))
 			if int(summary.get("total_bets", 0)) > 0:
@@ -165,7 +203,7 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 		return
 
 
-def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> None:
+def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> int:
 	"""Send one deduplicated interactive alert per eligible Serie A fixture."""
 	from src.operations.telegram_notifier import (
 		_notified_keys,
@@ -175,6 +213,7 @@ def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> None:
 	)
 
 	notified = _notified_keys(base_dir)
+	sent = 0
 
 	for row_dict in select_actionable_plays(report):
 		key = stable_notification_key(row_dict)
@@ -187,6 +226,9 @@ def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> None:
 
 		_record_notification(base_dir, key, "INTERACTIVE_PLAY")
 		notified.add(key)
+		sent += 1
+
+	return sent
 
 
 def run_prematch_job(base_dir: Path | str | None = None) -> tuple[int, dict[str, Any]]:

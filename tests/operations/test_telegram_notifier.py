@@ -172,9 +172,12 @@ def test_rerun_emits_no_duplicate_play_or_prematch_summary(tmp_path: Path, monke
 	summary_calls = []
 	monkeypatch.setattr(automation, "send_message", lambda text: summary_calls.append(text) or True)
 
-	first_code, _ = automation._run_job("prematch", tmp_path, "slot", lambda: {"collector": {"fixtures_fetched": 1, "odds_writes": 1}, "settlement": {"total_bets": 0}})
-	second_code, second_payload = automation._run_job("prematch", tmp_path, "slot", lambda: {"collector": {"fixtures_fetched": 1, "odds_writes": 1}, "settlement": {"total_bets": 0}})
+	first_code, _ = automation._run_job("prematch", tmp_path, "slot", lambda: {"collector": {"fixtures_fetched": 1, "odds_writes": 1, "quota_remaining": 100}, "settlement": {"total_bets": 0}})
+	second_code, second_payload = automation._run_job("prematch", tmp_path, "slot", lambda: {"collector": {"fixtures_fetched": 1, "odds_writes": 1, "quota_remaining": 100}, "settlement": {"total_bets": 0}})
 
 	assert first_code == 0 and second_code == 0
 	assert second_payload["outcome"] == "SKIPPED_IDEMPOTENT"
-	assert len(summary_calls) == 0
+	# Il primo run schedulato deve produrre un esito Telegram esplicito.
+	# Il secondo run idempotente non deve produrre un duplicato.
+	assert len(summary_calls) == 1
+	assert "ANALISI COMPLETATA" in summary_calls[0]
