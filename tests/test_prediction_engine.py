@@ -50,6 +50,7 @@ def test_predict_returns_probabilities_and_expected_values(merged_inputs: pd.Dat
 
 
 def test_invalid_required_feature_raises_domain_error(merged_inputs: pd.DataFrame):
+    merged_inputs["expected_total_corner"] = merged_inputs["expected_total_corner"].astype(object)
     merged_inputs.loc[0, "expected_total_corner"] = "bad"
 
     with pytest.raises(InvalidFeatureDataError, match="must be numeric"):

@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from src.data.odds_matcher import OddsMatcher
-from src.data.providers.odds.api_football_odds import ApiFootballOddsProvider
+from src.data.providers.odds.api_football_odds import ApiFootballOddsProvider, ApiFootballProviderError
 from src.data.providers.odds.betfair_historical import BetfairHistoricalAudit, parse_betfair_stream_file
 from src.data.providers.odds.provider_qualification import evaluate_provider_qualification, build_provider_comparison_matrix
 from src.data.providers.odds.sportmonks_odds import SportmonksOddsProvider
@@ -53,7 +53,7 @@ def test_over_under_normalization_and_fixture_matching() -> None:
 
 def test_missing_token_fails_locally_and_secrets_are_redacted() -> None:
     provider = ApiFootballOddsProvider(api_key="   ")
-    with pytest.raises(ValueError, match="API_FOOTBALL_KEY"):
+    with pytest.raises(ApiFootballProviderError, match="API_FOOTBALL_KEY"):
         provider.list_sports()
 
     redacted = provider._redact_sensitive({"token": "abc123", "detail": "abc123"})

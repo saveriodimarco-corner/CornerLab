@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.stats import poisson
 
 try:
     import matplotlib
@@ -66,12 +67,11 @@ def run_confidence_engine(base_dir: Path | str | None = None, output_dir: Path |
     regression_model_name = regression_model_info["model_name"]
     regression_model = load_model(output_dir, regression_target, regression_model_name)
 
+    # Production architecture:
+    # one Poisson count model predicts expected total corners (mu).
+    # O/U market probabilities are derived analytically from that same mu,
+    # rather than loading independent legacy classification artifacts.
     classification_targets = ["over_8_5", "over_9_5", "over_10_5", "over_11_5"]
-    classification_models: Dict[str, Any] = {}
-    for target_name in classification_targets:
-        target_info = next((payload for payload in best_models.values() if payload.get("target_name") == target_name and payload.get("accepted", False)), None)
-        if target_info is not None:
-            classification_models[target_name] = load_model(output_dir, target_name, target_info["model_name"])
 
     match_features = [col for col in valid_frame.columns if col in train_frame.columns and col not in {"match_id", "season", "date", "home_team", "away_team", "home_corners", "away_corners", "total_corners", "actual_home_corners", "actual_away_corners", "actual_total_corners", "over_8_5", "over_9_5", "over_10_5", "over_11_5"}]
     regression_feature_columns = [col for col in selected_features.get(regression_target, []) if col in valid_frame.columns and pd.api.types.is_numeric_dtype(valid_frame[col])]
@@ -86,18 +86,31 @@ def run_confidence_engine(base_dir: Path | str | None = None, output_dir: Path |
     table["absolute_error"] = np.abs(table["actual_total_corners"].astype(float) - table["predicted_total_corners"].astype(float))
     table["signed_error"] = table["actual_total_corners"].astype(float) - table["predicted_total_corners"].astype(float)
 
+    market_thresholds = {
+        "over_8_5": 8,
+        "over_9_5": 9,
+        "over_10_5": 10,
+        "over_11_5": 11,
+    }
+
+    safe_mu = np.clip(regression_predictions.astype(float), 1e-9, None)
+
     for target_name in classification_targets:
-        feature_names = [col for col in selected_features.get(target_name, []) if col in valid_frame.columns and pd.api.types.is_numeric_dtype(valid_frame[col])]
-        if not feature_names:
-            feature_names = regression_feature_columns
-        x_target = valid_frame[feature_names].astype(float).fillna(0.0)
-        if target_name in classification_models:
-            probs = np.asarray(predict_classification_model(classification_models[target_name], x_target), dtype=float)
-        else:
-            probs = np.full(len(valid_frame), float(train_frame[target_name].mean()), dtype=float)
-        table[f"predicted_probability_{target_name}"] = np.clip(probs, 0.0, 1.0)
-        table[f"actual_outcome_{target_name}"] = valid_frame[target_name].astype(int).to_numpy()
-        table[f"brier_contribution_{target_name}"] = (table[f"predicted_probability_{target_name}"] - table[f"actual_outcome_{target_name}"]) ** 2
+        threshold = market_thresholds[target_name]
+        probs = np.asarray(poisson.sf(threshold, safe_mu), dtype=float)
+
+        table[f"predicted_probability_{target_name}"] = np.clip(
+            probs,
+            0.0,
+            1.0,
+        )
+        table[f"actual_outcome_{target_name}"] = (
+            valid_frame[target_name].astype(int).to_numpy()
+        )
+        table[f"brier_contribution_{target_name}"] = (
+            table[f"predicted_probability_{target_name}"]
+            - table[f"actual_outcome_{target_name}"]
+        ) ** 2
 
     confidence_features = build_confidence_features(table, valid_frame, pre_match_feature_columns)
     table = pd.concat([table.reset_index(drop=True), confidence_features.reset_index(drop=True)], axis=1)

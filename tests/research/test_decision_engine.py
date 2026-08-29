@@ -15,8 +15,8 @@ def test_decision_engine_builds_metrics_and_writes_reports(tmp_path: Path) -> No
             {
                 "match_id": 1,
                 "market": "Over 8.5",
-                "closing_odds": 2.50,
-                "predicted_probability": 0.60,
+                "closing_odds": 1.60,
+                "predicted_probability": 0.70,
                 "model_confidence": 0.80,
             },
             {
@@ -95,7 +95,7 @@ def test_stake_cap_uses_current_bankroll_and_never_exceeds_5_percent(bankroll: f
 def test_stake_cap_does_not_alter_ev_confidence_or_market_support() -> None:
     predictions = pd.DataFrame(
         [
-            {"match_id": 1, "market": "Over 9.5", "closing_odds": 2.50, "predicted_probability": 0.60, "model_confidence": 0.80},
+            {"match_id": 1, "market": "Over 9.5", "closing_odds": 1.60, "predicted_probability": 0.70, "model_confidence": 0.80},
             {"match_id": 2, "market": "Over 10.5", "closing_odds": 1.80, "predicted_probability": 0.55, "model_confidence": 0.40},
         ]
     )

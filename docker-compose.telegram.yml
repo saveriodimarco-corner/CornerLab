@@ -1,0 +1,4 @@
+services:
+  cornerlab:
+    healthcheck:
+      disable: true

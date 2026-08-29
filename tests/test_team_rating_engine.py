@@ -29,6 +29,7 @@ def test_missing_columns_raise_explicit_error():
 
 def test_malformed_corner_input_raises_domain_error(match_data: pd.DataFrame):
     engine = TeamRatingEngine()
+    match_data["home_corners"] = match_data["home_corners"].astype(object)
     match_data.loc[0, "home_corners"] = "not-a-number"
 
     with pytest.raises(InvalidMatchDataError, match="Corner values must be numeric"):

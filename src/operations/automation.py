@@ -153,11 +153,9 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 	"""Optional notifications consume persisted/canonical outputs and never affect the job outcome."""
 	try:
 		if job_type == "prematch":
-			send_message(format_prematch_completed(result, completed_at))
 			report_path = base_dir / "reports" / "paper_trading_current.csv"
 			if report_path.exists():
 				report = pd.read_csv(report_path)
-				notify_new_plays(base_dir, report)
 				_offer_bet_confirmations(base_dir, report)
 		elif job_type == "settlement":
 			summary = result.get("summary", result.get("settlement", {}))
@@ -168,14 +166,27 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 
 
 def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> None:
-	"""Send the interactive real-bet confirmation keyboard for new supported Serie A PLAY rows only."""
-	if report.empty or "decision" not in report.columns:
-		return
-	for _, row in report.loc[report["decision"].astype(str) == "PLAY"].iterrows():
-		row_dict = row.to_dict()
-		if str(row_dict.get("target_name", "")) not in SUPPORTED_TELEGRAM_TARGETS or str(row_dict.get("competition", "")) != "Serie A":
+	"""Send one deduplicated interactive alert per eligible Serie A fixture."""
+	from src.operations.telegram_notifier import (
+		_notified_keys,
+		_record_notification,
+		select_actionable_plays,
+		stable_notification_key,
+	)
+
+	notified = _notified_keys(base_dir)
+
+	for row_dict in select_actionable_plays(report):
+		key = stable_notification_key(row_dict)
+		if key in notified:
 			continue
-		telegram_bot.offer_bet_confirmation(base_dir, row_dict)
+
+		bet_id = telegram_bot.offer_bet_confirmation(base_dir, row_dict)
+		if not bet_id:
+			continue
+
+		_record_notification(base_dir, key, "INTERACTIVE_PLAY")
+		notified.add(key)
 
 
 def run_prematch_job(base_dir: Path | str | None = None) -> tuple[int, dict[str, Any]]:

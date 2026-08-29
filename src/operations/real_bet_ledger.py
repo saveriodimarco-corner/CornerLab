@@ -25,7 +25,7 @@ def _utc_now() -> str:
 
 def suggestion_key(row: dict[str, Any]) -> str:
 	"""Canonical decision identity shared with the Telegram PLAY notification dedup key."""
-	return "|".join(str(row.get(field, "")) for field in ["fixture_id", "market", "side", "line", "bookmaker", "decision_timestamp"])
+	return "|".join(str(row.get(field, "")) for field in ["fixture_id", "market", "side", "line", "bookmaker"])
 
 
 def _db_path(base_dir: Path | str) -> Path:

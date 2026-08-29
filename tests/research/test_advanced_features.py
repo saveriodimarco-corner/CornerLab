@@ -86,8 +86,9 @@ def test_advanced_features_are_generated_without_leakage(tmp_path: Path) -> None
     assert ((dataset["over_10_5"] == (dataset["total_corners"] > 10.5).astype(int)).all())
     assert ((dataset["over_11_5"] == (dataset["total_corners"] > 11.5).astype(int)).all())
 
-    numeric_columns = [col for col in dataset.columns if col not in {"match_id", "season", "date", "home_team", "away_team"}]
-    assert np.isfinite(dataset[numeric_columns]).all().all()
+    numeric_columns = dataset.select_dtypes(include=[np.number, "bool"]).columns.tolist()
+    assert numeric_columns
+    assert np.isfinite(dataset[numeric_columns].astype(float)).all().all()
 
     assert dataset["insufficient_history"].sum() > 0
     assert dataset["data_quality_score"].between(0.0, 1.0).all()
@@ -95,7 +96,9 @@ def test_advanced_features_are_generated_without_leakage(tmp_path: Path) -> None
     home_row = dataset.iloc[0]
     assert home_row["corners_for_last3"] == 0.0
     assert home_row["home_corners_for_last5"] == 0.0
-    assert home_row["home_rest_days"] == 0
+    # Opening-season fixtures use the neutral rest-day baseline to avoid
+    # out-of-distribution predictions from artificial zero-day rest values.
+    assert home_row["home_rest_days"] == 88
     assert home_row["season_match_number"] == 1
 
     def expected_last3_for(row_idx: int, team: str) -> float:

@@ -43,10 +43,15 @@ def run_model_explainability(base_dir: Path | str | None = None, output_dir: Pat
         raise ValueError("Validation season data is missing")
 
     best_models = json.loads(best_models_path.read_text(encoding="utf-8"))
+    # Production explainability follows the deployed architecture:
+    # the single accepted count model for total corners is the source of truth.
+    # O/U probabilities are derived from its Poisson distribution elsewhere,
+    # so legacy per-market classifiers are intentionally excluded here.
     accepted_models = [
         {"target_name": target_name, **payload}
         for target_name, payload in best_models.items()
-        if payload.get("accepted", False)
+        if target_name == "actual_total_corners"
+        and payload.get("accepted", False)
     ]
 
     selected_feature_map = load_selected_feature_map(base_dir)

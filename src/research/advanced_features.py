@@ -215,10 +215,30 @@ def build_advanced_feature_dataset(base_dir: Path | str | None = None, output_di
 
         home_rest_days = _rest_days(home_history, row["date"])
         away_rest_days = _rest_days(away_history, row["date"])
-        rest_days_difference = home_rest_days - away_rest_days
 
         home_matches_played = len([entry for entry in home_history if str(entry["season"]) == season])
         away_matches_played = len([entry for entry in away_history if str(entry["season"]) == season])
+
+        # At the start of a season, missing cross-competition history can
+        # produce artificial rest periods of several hundred days for
+        # promoted/returning teams. Historical Serie A season openers with
+        # usable prior history have a robust median rest period of ~88 days.
+        # Neutralise only missing or clearly out-of-domain opening values;
+        # preserve genuine opening rest periods inside the observed range.
+        opening_rest_neutral = 88
+        opening_rest_max = 120
+
+        if home_matches_played == 0 and (
+            home_rest_days <= 0 or home_rest_days > opening_rest_max
+        ):
+            home_rest_days = opening_rest_neutral
+
+        if away_matches_played == 0 and (
+            away_rest_days <= 0 or away_rest_days > opening_rest_max
+        ):
+            away_rest_days = opening_rest_neutral
+
+        rest_days_difference = home_rest_days - away_rest_days
 
         home_offensive_elo = float(home_state["offensive_elo"])
         away_offensive_elo = float(away_state["offensive_elo"])

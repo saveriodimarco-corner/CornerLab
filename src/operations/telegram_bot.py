@@ -91,10 +91,14 @@ def format_bankroll_message(snapshot: dict[str, float]) -> str:
 
 
 def offer_bet_confirmation(base_dir: Path | str, row: dict[str, Any], request_sender: Callable[[str, bytes, float], None] | None = None) -> str:
-	"""Record a SUGGESTED bet and send the interactive confirmation keyboard; returns the opaque bet_id."""
+	"""Record a SUGGESTED bet and send one interactive confirmation message."""
 	bet_id = real_bet_ledger.record_suggestion(base_dir, row)
-	send_message(format_suggestion_prompt(row), request_sender=request_sender, reply_markup=build_play_keyboard(bet_id))
-	return bet_id
+	sent = send_message(
+		format_suggestion_prompt(row),
+		request_sender=request_sender,
+		reply_markup=build_play_keyboard(bet_id),
+	)
+	return bet_id if sent else ""
 
 
 def _pending_state_path(base_dir: Path | str) -> Path:

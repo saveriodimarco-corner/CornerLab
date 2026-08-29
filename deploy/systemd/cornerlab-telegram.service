@@ -9,7 +9,10 @@ User=cornerlab
 Group=cornerlab
 WorkingDirectory=/srv/cornerlab
 EnvironmentFile=/etc/cornerlab/automation.env
-ExecStart=/usr/bin/docker compose -f /srv/cornerlab/docker-compose.production.yml run --rm --no-deps cornerlab python3 scripts/run_telegram_bot.py
+Environment=DOCKER_CONFIG=/etc/cornerlab/docker
+ExecStartPre=-/usr/bin/docker rm -f cornerlab-telegram-worker
+ExecStart=/usr/bin/docker compose -f /srv/cornerlab/docker-compose.production.yml -f /srv/cornerlab/docker-compose.telegram.yml run --rm --name cornerlab-telegram-worker --no-deps cornerlab python3 scripts/run_telegram_bot.py
+ExecStop=-/usr/bin/docker rm -f cornerlab-telegram-worker
 Restart=always
 RestartSec=10
 NoNewPrivileges=true

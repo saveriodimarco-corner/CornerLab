@@ -15,10 +15,10 @@ from src.utils.validator import DataValidator, ValidationError
 def match_data() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"date": "2024-08-10", "season": "2024/25", "home_team": "Team A", "away_team": "Team B", "home_corners": 7, "away_corners": 4},
-            {"date": "2024-08-17", "season": "2024/25", "home_team": "Team B", "away_team": "Team C", "home_corners": 5, "away_corners": 6},
-            {"date": "2024-08-24", "season": "2024/25", "home_team": "Team C", "away_team": "Team A", "home_corners": 3, "away_corners": 8},
-            {"date": "2024-08-31", "season": "2024/25", "home_team": "Team A", "away_team": "Team C", "home_corners": 9, "away_corners": 2},
+            {"date": "2024-08-10", "competition": "Serie A", "season": "2024/25", "home_team": "Team A", "away_team": "Team B", "home_corners": 7, "away_corners": 4},
+            {"date": "2024-08-17", "competition": "Serie A", "season": "2024/25", "home_team": "Team B", "away_team": "Team C", "home_corners": 5, "away_corners": 6},
+            {"date": "2024-08-24", "competition": "Serie A", "season": "2024/25", "home_team": "Team C", "away_team": "Team A", "home_corners": 3, "away_corners": 8},
+            {"date": "2024-08-31", "competition": "Serie A", "season": "2024/25", "home_team": "Team A", "away_team": "Team C", "home_corners": 9, "away_corners": 2},
         ]
     )
 

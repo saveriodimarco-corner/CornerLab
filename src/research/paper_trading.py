@@ -116,11 +116,9 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
             1.0 / scored_report["closing_odds"],
             np.nan,
         )
-        scored_report["odds_at_decision"] = np.where(
-            scored_report["opening_odds"].notna() & (scored_report["opening_odds"] > 0.0),
-            scored_report["opening_odds"],
-            scored_report["closing_odds"],
-        )
+        # The operational decision must use the latest validated quote.
+        # opening_odds remains available for historical price comparison.
+        scored_report["odds_at_decision"] = scored_report["closing_odds"]
         scored_report["implied_probability_at_decision"] = np.where(
             scored_report["odds_at_decision"].notna() & (scored_report["odds_at_decision"] > 0.0),
             1.0 / scored_report["odds_at_decision"],
@@ -139,11 +137,29 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
         scored_report["EV"] = scored_report["ev"]
         scored_report["decision_timestamp"] = decision_timestamp
         scored_report["kickoff"] = scored_report.get("kickoff_utc")
-        scored_report["decision_reason"] = np.where(
-            scored_report["decision"] == "LOW CONFIDENCE",
-            "CONFIDENCE_BELOW_THRESHOLD",
-            np.where(scored_report["decision"] == "PLAY", "POSITIVE_EV", "NON_POSITIVE_EV"),
+        history_mask = (
+            scored_report["insufficient_history"]
+            .fillna(True)
+            .astype(bool)
         )
+
+        quality_mask = (
+            pd.to_numeric(
+                scored_report["data_quality_score"],
+                errors="coerce",
+            ).fillna(0.0)
+            < float(DEFAULT_POLICY.get("data_quality_min", 0.25))
+        )
+
+        scored_report.loc[
+            history_mask,
+            ["decision", "decision_reason"],
+        ] = ["NO BET", "INSUFFICIENT_HISTORY"]
+
+        scored_report.loc[
+            ~history_mask & quality_mask,
+            ["decision", "decision_reason"],
+        ] = ["NO BET", "DATA_QUALITY_BELOW_THRESHOLD"]
 
     report = pd.concat([scored_report, unavailable_rows], ignore_index=True, sort=False)
     report = report.sort_values("row_order", kind="stable").reset_index(drop=True)
@@ -424,6 +440,26 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
 
         live_feature_row = live_feature_row.iloc[[0]].copy()
 
+        # Preserve authoritative fixture metadata from the collector.
+        live_feature_row.loc[
+            live_feature_row.index,
+            "fixture_id",
+        ] = fixture_id
+
+        live_feature_row.loc[
+            live_feature_row.index,
+            "provider_fixture_id",
+        ] = fixture.get("provider_fixture_id")
+
+        live_feature_row.loc[
+            live_feature_row.index,
+            "kickoff_utc",
+        ] = pd.to_datetime(
+            fixture["kickoff_utc"],
+            utc=True,
+            errors="coerce",
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         # ------------------------------------------------------------
         # Production fix:
         # rest-day features must use the team's most recent real match,
@@ -471,6 +507,43 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
 
         real_home_rest = _real_rest_days(fixture_home)
         real_away_rest = _real_rest_days(fixture_away)
+
+        # Keep the live rest-day correction used for team-name/history
+        # reconciliation, but apply the same opening-season protection as
+        # the canonical feature builder. Missing cross-competition history
+        # must not become hundreds of artificial rest days.
+        opening_rest_neutral = 88.0
+        opening_rest_max = 120.0
+
+        home_matches_played = pd.to_numeric(
+            live_feature_row["home_matches_played"],
+            errors="coerce",
+        ).fillna(0).iloc[0]
+
+        away_matches_played = pd.to_numeric(
+            live_feature_row["away_matches_played"],
+            errors="coerce",
+        ).fillna(0).iloc[0]
+
+        if (
+            real_home_rest is not None
+            and home_matches_played == 0
+            and (
+                real_home_rest <= 0
+                or real_home_rest > opening_rest_max
+            )
+        ):
+            real_home_rest = opening_rest_neutral
+
+        if (
+            real_away_rest is not None
+            and away_matches_played == 0
+            and (
+                real_away_rest <= 0
+                or real_away_rest > opening_rest_max
+            )
+        ):
+            real_away_rest = opening_rest_neutral
 
         if real_home_rest is not None:
             live_feature_row.loc[
@@ -859,9 +932,11 @@ def _build_odds_input(
             # Compatibility fallback for competitions where a validated
             # total-corners count model is not yet available.
             # --------------------------------------------------------
+            model_target_name = MARKET_LINE_TO_TARGET_NAME.get(line)
+
             registry_key = _model_registry_key(
                 competition_slug,
-                target_name,
+                model_target_name,
             )
 
             if registry_key not in model_bundle:
@@ -884,7 +959,7 @@ def _build_odds_input(
                     [
                         feature_row_to_model_input(
                             fixture_row,
-                            target_name,
+                            model_target_name,
                         )
                     ]
                 )
@@ -1026,7 +1101,15 @@ def _target_name_for_market_line(market: str, line: str) -> str | None:
     line = str(line).strip()
     if market not in {"TOTAL_CORNERS_OVER", "TOTAL_CORNERS_UNDER"}:
         return None
-    return MARKET_LINE_TO_TARGET_NAME.get(line)
+
+    over_target = MARKET_LINE_TO_TARGET_NAME.get(line)
+    if over_target is None:
+        return None
+
+    if market == "TOTAL_CORNERS_UNDER":
+        return over_target.replace("over_", "under_", 1)
+
+    return over_target
 
 
 def _resolve_market_probability(market: str, side: str, over_probability: float) -> float:

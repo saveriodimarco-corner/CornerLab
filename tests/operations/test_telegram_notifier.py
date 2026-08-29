@@ -47,10 +47,10 @@ def test_play_notifications_use_canonical_records_and_deduplicate(tmp_path: Path
 	first = telegram_notifier.notify_new_plays(tmp_path, report, request_sender=lambda _, payload, __: messages.append(payload))
 	second = telegram_notifier.notify_new_plays(tmp_path, report, request_sender=lambda _, payload, __: messages.append(payload))
 
-	assert first == 1
+	assert first == 2
 	assert second == 0
-	assert len(messages) == 1
-	assert b"Juventus" in messages[0]
+	assert len(messages) == 2
+	assert any(b"Juventus" in message for message in messages)
 
 
 def test_telegram_failure_never_blocks_prematch_or_settlement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,7 +119,7 @@ def test_five_or_fewer_plays_use_one_alert_per_play(tmp_path: Path, monkeypatch:
 	assert all("NUOVA OPPORTUNIT" in unquote_plus(message.decode()) for message in messages)
 
 
-def test_more_than_five_plays_group_by_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_more_than_five_plays_deduplicate_by_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	rows = [_play_row(1, "OVER", "9.5"), _play_row(1, "OVER", "10.5")]
 	rows += [_play_row(index, "OVER", "9.5") for index in range(2, 7)]
@@ -128,10 +128,11 @@ def test_more_than_five_plays_group_by_fixture(tmp_path: Path, monkeypatch: pyte
 
 	sent = telegram_notifier.notify_new_plays(tmp_path, report, request_sender=lambda _, payload, __: messages.append(payload))
 
-	assert sent == 7
+	assert sent == 6
 	assert len(messages) == 6
 	fixture_one_message = unquote_plus(next(message for message in messages if b"Home1" in message).decode())
-	assert "OVER 9.5" in fixture_one_message and "OVER 10.5" in fixture_one_message
+	assert "OVER 9.5" in fixture_one_message
+	assert "OVER 10.5" not in fixture_one_message
 	assert "OPPORTUNIT" in fixture_one_message and "NUOVA" not in fixture_one_message
 
 
@@ -148,7 +149,7 @@ def test_grouping_does_not_merge_different_fixtures(tmp_path: Path, monkeypatch:
 	assert homes == set(range(1, 8))
 
 
-def test_dedup_remains_decision_level_across_grouped_and_individual_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dedup_remains_fixture_level_across_grouped_and_individual_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	rows = [_play_row(1, "OVER", "9.5"), _play_row(1, "OVER", "10.5")]
 	rows += [_play_row(index, "OVER", "9.5") for index in range(2, 7)]
@@ -159,9 +160,8 @@ def test_dedup_remains_decision_level_across_grouped_and_individual_modes(tmp_pa
 	messages = []
 	sent = telegram_notifier.notify_new_plays(tmp_path, pd.concat([report, extra_row], ignore_index=True), request_sender=lambda _, payload, __: messages.append(payload))
 
-	assert sent == 1
-	assert len(messages) == 1
-	assert "UNDER 9.5" in unquote_plus(messages[0].decode())
+	assert sent == 0
+	assert len(messages) == 0
 
 
 def test_rerun_emits_no_duplicate_play_or_prematch_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,4 +177,4 @@ def test_rerun_emits_no_duplicate_play_or_prematch_summary(tmp_path: Path, monke
 
 	assert first_code == 0 and second_code == 0
 	assert second_payload["outcome"] == "SKIPPED_IDEMPOTENT"
-	assert len(summary_calls) == 1
+	assert len(summary_calls) == 0

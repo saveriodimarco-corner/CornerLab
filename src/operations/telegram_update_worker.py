@@ -121,11 +121,17 @@ def poll_once(base_dir: Path | str, request_sender: Callable[[str, bytes, float]
 			continue
 		try:
 			process_update(base_dir, update, request_sender)
-		except Exception:
-			LOGGER.warning("Telegram update processing failed for update_id=%s", update_id)
-		write_offset(base_dir, update_id + 1)
-		offset = update_id + 1
-		processed += 1
+		except Exception as exc:
+			LOGGER.warning(
+				"Telegram update processing failed for update_id=%s: %s: %s",
+				update_id,
+				type(exc).__name__,
+				str(exc),
+			)
+		finally:
+			write_offset(base_dir, update_id + 1)
+			offset = update_id + 1
+			processed += 1
 	return processed
 
 
@@ -142,9 +148,14 @@ def run_worker(base_dir: Path | str, request_sender: Callable[[str, bytes, float
 		try:
 			poll_once(base_dir, request_sender)
 			backoff = BACKOFF_SECONDS
-		except Exception:
+		except Exception as exc:
 			# Never log the token or raw request payloads.
-			LOGGER.warning("Telegram polling failed, retrying in %.0fs", backoff)
+			LOGGER.warning(
+				"Telegram polling failed (%s: %s), retrying in %.0fs",
+				type(exc).__name__,
+				str(exc),
+				backoff,
+			)
 			sleeper(backoff)
 			backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
 	return iterations

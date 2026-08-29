@@ -264,9 +264,14 @@ def test_dry_run_performs_zero_writes(temp_repo):
     assert run["writes"] == 0
 
 
-def test_scheduled_runs_do_not_overlap(temp_repo):
+def test_scheduled_runs_do_not_overlap(temp_repo, monkeypatch):
     config, repo = temp_repo
     scheduler = CollectorScheduler(config, repo)
+
+    # This test verifies scheduler locking/overlap semantics only.
+    # External providers must never be contacted from the test suite.
+    monkeypatch.setattr(scheduler.live_adapter, "fetch_fixtures", lambda: [])
+
     first = scheduler.run(mode="ONE_SHOT")
     second = scheduler.run(mode="ONE_SHOT")
     assert first["status"] in {"ok", "skipped"}

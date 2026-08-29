@@ -10,6 +10,13 @@ import pandas as pd
 
 SUPPORTED_MARKETS = {"OVER 8.5", "OVER 9.5", "OVER 10.5", "OVER 11.5"}
 
+# Production decision policy.
+MIN_PREDICTED_PROBABILITY = 0.70
+MIN_MARKET_EDGE = 0.05
+MIN_EV = 0.08
+MIN_CONFIDENCE_SCORE = 60.0
+MIN_ODDS = 1.50
+
 # Production staking-risk cap: never stake more than this fraction of current bankroll.
 MAX_STAKE_FRACTION = 0.05
 
@@ -85,17 +92,58 @@ def build_decision_report(predictions: pd.DataFrame, bankroll: float = 100.0) ->
     )
     report["confidence_score"] = frame["model_confidence"] * 100.0
 
+    low_confidence_mask = (
+        report["confidence_score"] < MIN_CONFIDENCE_SCORE
+    )
+
+    play_mask = (
+        ~low_confidence_mask
+        & report["closing_odds"].notna()
+        & (report["closing_odds"] >= MIN_ODDS)
+        & report["predicted_probability"].notna()
+        & (report["predicted_probability"] >= MIN_PREDICTED_PROBABILITY)
+        & report["market_edge"].notna()
+        & (report["market_edge"] >= MIN_MARKET_EDGE)
+        & report["ev"].notna()
+        & (report["ev"] >= MIN_EV)
+    )
+
     report["decision"] = np.where(
-        report["confidence_score"] < 60.0,
+        low_confidence_mask,
         "LOW CONFIDENCE",
-        np.where(
-            report["ev"] > 0.0,
-            "PLAY",
-            "NO BET",
-        ),
+        np.where(play_mask, "PLAY", "NO BET"),
+    )
+
+    report["decision_reason"] = np.select(
+        [
+            low_confidence_mask,
+            report["closing_odds"].isna(),
+            report["closing_odds"] < MIN_ODDS,
+            report["predicted_probability"].isna(),
+            report["predicted_probability"] < MIN_PREDICTED_PROBABILITY,
+            report["market_edge"].isna(),
+            report["market_edge"] < MIN_MARKET_EDGE,
+            report["ev"].isna(),
+            report["ev"] < MIN_EV,
+            play_mask,
+        ],
+        [
+            "CONFIDENCE_BELOW_THRESHOLD",
+            "ODDS_UNAVAILABLE",
+            "ODDS_BELOW_THRESHOLD",
+            "PROBABILITY_UNAVAILABLE",
+            "PROBABILITY_BELOW_THRESHOLD",
+            "EDGE_UNAVAILABLE",
+            "EDGE_BELOW_THRESHOLD",
+            "EV_UNAVAILABLE",
+            "EV_BELOW_THRESHOLD",
+            "PRODUCTION_GATES_PASSED",
+        ],
+        default="NO_BET",
     )
 
     report["decision"] = report["decision"].astype(str)
+    report["decision_reason"] = report["decision_reason"].astype(str)
     return report
 
 

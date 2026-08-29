@@ -5,7 +5,8 @@ import logging
 import os
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,7 +16,12 @@ from src.research.decision_engine import MAX_STAKE_FRACTION
 
 
 LOGGER = logging.getLogger(__name__)
-SUPPORTED_TARGETS = {"over_9_5", "under_9_5", "over_10_5", "under_10_5"}
+SUPPORTED_TARGETS = {
+    "over_8_5", "under_8_5",
+    "over_9_5", "under_9_5",
+    "over_10_5", "under_10_5",
+    "over_11_5", "under_11_5",
+}
 
 
 def _enabled() -> bool:
@@ -91,6 +97,99 @@ def format_grouped_play(rows: list[dict[str, Any]]) -> str:
 	return "\n".join(lines)
 
 
+
+def stable_notification_key(row: dict[str, Any]) -> str:
+    """Stable Telegram identity: at most one actionable alert per fixture."""
+    return f"fixture:{row.get('fixture_id', '')}"
+
+
+def select_actionable_plays(
+    report: pd.DataFrame,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return at most one Serie A PLAY per fixture for remaining today + tomorrow Rome time."""
+    if report.empty or "decision" not in report.columns:
+        return []
+
+    now_utc = pd.Timestamp(now or datetime.now(timezone.utc))
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.tz_localize("UTC")
+    else:
+        now_utc = now_utc.tz_convert("UTC")
+
+    rome = ZoneInfo("Europe/Rome")
+    today_rome = now_utc.to_pydatetime().astimezone(rome).date()
+    tomorrow_rome = today_rome + timedelta(days=1)
+
+    candidates: list[dict[str, Any]] = []
+
+    for _, row in report.loc[
+        report["decision"].astype(str) == "PLAY"
+    ].iterrows():
+        item = row.to_dict()
+
+        if str(item.get("competition", "")) != "Serie A":
+            continue
+
+        if str(item.get("target_name", "")) not in SUPPORTED_TARGETS:
+            continue
+
+        kickoff = pd.to_datetime(item.get("kickoff_utc"), utc=True, errors="coerce")
+        if pd.isna(kickoff):
+            continue
+
+        # Never alert a match that has already started.
+        if kickoff <= now_utc:
+            continue
+
+        kickoff_date_rome = kickoff.to_pydatetime().astimezone(rome).date()
+        if kickoff_date_rome not in {today_rome, tomorrow_rome}:
+            continue
+
+        candidates.append(item)
+
+    def number(item: dict[str, Any], *names: str) -> float:
+        for name in names:
+            try:
+                value = float(item.get(name))
+                if pd.notna(value):
+                    return value
+            except (TypeError, ValueError):
+                pass
+        return float("-inf")
+
+    # Highest EV first, then probability, confidence and odds.
+    candidates.sort(
+        key=lambda item: (
+            number(item, "EV", "ev"),
+            number(item, "predicted_probability"),
+            number(item, "confidence_score", "confidence"),
+            number(item, "odds_at_decision", "closing_odds"),
+            str(item.get("target_name", "")),
+            str(item.get("bookmaker", "")),
+        ),
+        reverse=True,
+    )
+
+    selected: list[dict[str, Any]] = []
+    seen_fixtures: set[str] = set()
+
+    for item in candidates:
+        fixture_id = str(item.get("fixture_id", ""))
+        if not fixture_id or fixture_id in seen_fixtures:
+            continue
+        seen_fixtures.add(fixture_id)
+        selected.append(item)
+
+    # Telegram order follows kickoff chronology, not EV ranking.
+    selected.sort(
+        key=lambda item: pd.to_datetime(
+            item.get("kickoff_utc"), utc=True, errors="coerce"
+        )
+    )
+    return selected
+
+
 def _history_path(base_dir: Path) -> Path:
 	return base_dir / "data" / "operations" / "telegram_notifications.jsonl"
 
@@ -120,14 +219,16 @@ def notify_new_plays(base_dir: Path | str, report: pd.DataFrame, request_sender:
 	if report.empty or "decision" not in report.columns:
 		return 0
 	notified = _notified_keys(base_dir)
+	seen_keys: set[str] = set()
 	candidates: list[tuple[str, dict[str, Any]]] = []
 	for _, row in report.loc[report["decision"].astype(str) == "PLAY"].iterrows():
 		row_dict = row.to_dict()
 		if str(row_dict.get("target_name", "")) not in SUPPORTED_TARGETS or str(row_dict.get("competition", "")) != "Serie A":
 			continue
-		key = "|".join(str(row_dict.get(field, "")) for field in ["fixture_id", "market", "side", "line", "bookmaker", "decision_timestamp"])
-		if key in notified:
+		key = stable_notification_key(row_dict)
+		if key in notified or key in seen_keys:
 			continue
+		seen_keys.add(key)
 		candidates.append((key, row_dict))
 
 	if not candidates:
@@ -142,7 +243,7 @@ def notify_new_plays(base_dir: Path | str, report: pd.DataFrame, request_sender:
 		return sent
 
 	# Above the noise threshold, group distinct markets of the same fixture into
-	# one message; deduplication still records each individual decision key.
+	# one message; deduplication is fixture-level.
 	grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {}
 	order: list[str] = []
 	for key, row_dict in candidates:

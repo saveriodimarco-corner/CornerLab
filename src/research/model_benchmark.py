@@ -77,7 +77,49 @@ def run_model_benchmark(base_dir: Path | str | None = None, output_dir: Path | s
     for target_name, target_result in best_models.items():
         if not target_result.get("accepted", False):
             continue
-        artifact_path = save_model_artifact(models_dir, target_name, target_result)
+
+        artifact_result = target_result
+
+        # Benchmark selection remains strictly chronological:
+        # train on 2023/24-2024/25 and validate on 2025/26.
+        # Once a model is accepted, refit the selected production model
+        # on the complete historical dataset so the deployed artifact
+        # uses all information available up to the latest completed season.
+        if target_name == "actual_total_corners":
+            model_name = target_result.get("model_name")
+
+            feature_names = selected_features[target_name]
+            x_full, _ = build_feature_frames(
+                dataset,
+                dataset,
+                feature_names,
+                target_name,
+            )
+            y_full = dataset[target_name].astype(float)
+
+            if model_name == "poisson_regression":
+                production_model = PoissonRegressor(
+                    alpha=0.0,
+                    max_iter=2000,
+                )
+                production_model.fit(x_full, y_full)
+
+                artifact_result = dict(target_result)
+                artifact_metrics = dict(
+                    artifact_result.get("metrics", {})
+                )
+                artifact_metrics["model_object"] = production_model
+                artifact_metrics["production_training_rows"] = int(
+                    len(dataset)
+                )
+                artifact_metrics["production_refit"] = True
+                artifact_result["metrics"] = artifact_metrics
+
+        artifact_path = save_model_artifact(
+            models_dir,
+            target_name,
+            artifact_result,
+        )
         accepted_model_artifacts.append(str(artifact_path))
 
     write_outputs(

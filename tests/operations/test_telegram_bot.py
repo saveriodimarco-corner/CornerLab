@@ -201,5 +201,6 @@ def test_telegram_send_failure_does_not_corrupt_ledger(tmp_path: Path, monkeypat
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=_raise)
 	result = telegram_bot.handle_callback(tmp_path, "999", f"confirm:{bet_id}", request_sender=_raise)
 
-	assert result["ok"] is True
-	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert bet_id == ""
+	assert result["ok"] is False
+	assert result["reason"] == "unknown_bet"
