@@ -73,6 +73,9 @@ def test_message_update_is_routed_to_handle_message(tmp_path: Path, monkeypatch:
 def test_callback_update_is_routed_to_handle_callback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	bet_id = real_bet_ledger.record_suggestion(tmp_path, _play_row())
+	bet = real_bet_ledger.get_bet_by_id(tmp_path, bet_id)
+	real_bet_ledger.modify_odds(tmp_path, bet["suggestion_id"], 1.92)
+	real_bet_ledger.modify_stake(tmp_path, bet["suggestion_id"], 4.20)
 	transport = _Transport([[_callback_update(10, 999, f"confirm:{bet_id}")]])
 
 	telegram_update_worker.poll_once(tmp_path, transport)
@@ -131,6 +134,9 @@ def test_restart_resumes_from_saved_offset(tmp_path: Path, monkeypatch: pytest.M
 def test_duplicate_update_is_not_processed_twice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	bet_id = real_bet_ledger.record_suggestion(tmp_path, _play_row())
+	bet = real_bet_ledger.get_bet_by_id(tmp_path, bet_id)
+	real_bet_ledger.modify_odds(tmp_path, bet["suggestion_id"], 1.92)
+	real_bet_ledger.modify_stake(tmp_path, bet["suggestion_id"], 4.20)
 	update = _callback_update(10, 999, f"confirm:{bet_id}")
 	transport = _Transport([[update], [update]])
 
