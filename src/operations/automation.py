@@ -20,6 +20,7 @@ from src.operations.monitoring import refresh_operations_status
 from src.operations.prematch_runner import run_prematch
 from src.research.observation_freeze import settle_paper_trades
 from src.operations.telegram_notifier import format_settlement_completed, send_message
+from src.operations.daily_summary import maybe_send_daily_summary
 from src.operations import telegram_bot
 
 import pandas as pd
@@ -250,6 +251,7 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 			summary = result.get("summary", result.get("settlement", {}))
 			if int(summary.get("total_bets", 0)) > 0:
 				send_message(format_settlement_completed(summary, completed_at))
+			maybe_send_daily_summary(base_dir, completed_at)
 	except Exception:
 		return
 

@@ -1357,3 +1357,301 @@ def test_settle_open_real_bets_does_not_count_failed_settlement_as_settled(
     assert result["results"] == []
     assert len(result["failures"]) == 1
     assert result["failures"][0]["settlement"]["reason"] == "simulated_failure"
+
+
+def test_daily_summary_does_not_send_before_last_match_is_due(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.operations import daily_summary
+
+    config = daily_summary.CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        api_football_key="test-key",
+    )
+    repo = daily_summary.CollectorRepository(config)
+
+    repo.upsert_fixture(
+        {
+            "provider_fixture_id": "9001",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-05T18:45:00Z",
+            "home_team": "Roma",
+            "away_team": "Atalanta",
+            "status": "NS",
+            "provider": "api-football",
+        }
+    )
+
+    sent = []
+    monkeypatch.setattr(
+        daily_summary,
+        "send_message",
+        lambda message: sent.append(message) or True,
+    )
+
+    result = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T19:30:00Z",
+    )
+
+    assert result["sent"] is False
+    assert result["reason"] == "last_match_not_due"
+    assert sent == []
+
+
+def test_daily_summary_sends_once_after_all_fixtures_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.operations import daily_summary
+
+    config = daily_summary.CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        api_football_key="test-key",
+    )
+    repo = daily_summary.CollectorRepository(config)
+
+    fixture1 = repo.upsert_fixture(
+        {
+            "provider_fixture_id": "9101",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-05T16:00:00Z",
+            "home_team": "Inter",
+            "away_team": "Napoli",
+            "status": "FT",
+            "provider": "api-football",
+        }
+    )
+    fixture2 = repo.upsert_fixture(
+        {
+            "provider_fixture_id": "9102",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-05T18:45:00Z",
+            "home_team": "Roma",
+            "away_team": "Atalanta",
+            "status": "FT",
+            "provider": "api-football",
+        }
+    )
+
+    for fixture, home_score, away_score, corners in [
+        (fixture1, 2, 1, 10),
+        (fixture2, 1, 0, 9),
+    ]:
+        repo.upsert_result(
+            {
+                "fixture_id": fixture["fixture_id"],
+                "home_score": home_score,
+                "away_score": away_score,
+                "home_corners": corners // 2,
+                "away_corners": corners - (corners // 2),
+                "total_corners": corners,
+                "settled_at": "2026-09-05T21:00:00Z",
+                "provider": "api-football",
+            }
+        )
+
+    monkeypatch.setattr(
+        daily_summary,
+        "_resolve_daily_fixture_statuses",
+        lambda *args, **kwargs: None,
+    )
+
+    sent = []
+    monkeypatch.setattr(
+        daily_summary,
+        "send_message",
+        lambda message: sent.append(message) or True,
+    )
+
+    first = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T21:00:00Z",
+    )
+    second = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T21:30:00Z",
+    )
+
+    assert first["sent"] is True
+    assert first["reason"] == "sent"
+    assert second["sent"] is False
+    assert second["reason"] == "already_sent"
+    assert len(sent) == 1
+    assert "📊 CORNERLAB — RIEPILOGO GIORNALIERO" in sent[0]
+    assert "Roma" in sent[0]
+    assert "Atalanta" in sent[0]
+
+
+def test_daily_summary_retries_if_telegram_send_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.operations import daily_summary
+
+    config = daily_summary.CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        api_football_key="test-key",
+    )
+    repo = daily_summary.CollectorRepository(config)
+
+    fixture = repo.upsert_fixture(
+        {
+            "provider_fixture_id": "9201",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-05T18:45:00Z",
+            "home_team": "Roma",
+            "away_team": "Atalanta",
+            "status": "FT",
+            "provider": "api-football",
+        }
+    )
+
+    repo.upsert_result(
+        {
+            "fixture_id": fixture["fixture_id"],
+            "home_score": 1,
+            "away_score": 0,
+            "home_corners": 5,
+            "away_corners": 4,
+            "total_corners": 9,
+            "settled_at": "2026-09-05T21:00:00Z",
+            "provider": "api-football",
+        }
+    )
+
+    monkeypatch.setattr(
+        daily_summary,
+        "_resolve_daily_fixture_statuses",
+        lambda *args, **kwargs: None,
+    )
+
+    responses = iter([False, True])
+    monkeypatch.setattr(
+        daily_summary,
+        "send_message",
+        lambda message: next(responses),
+    )
+
+    first = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T21:00:00Z",
+    )
+    second = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T21:30:00Z",
+    )
+
+    assert first["sent"] is False
+    assert first["reason"] == "telegram_send_failed"
+    assert second["sent"] is True
+    assert second["reason"] == "sent"
+
+
+def test_daily_summary_contains_real_daily_and_general_stats(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.operations import daily_summary, real_bet_ledger
+
+    config = daily_summary.CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        api_football_key="test-key",
+    )
+    repo = daily_summary.CollectorRepository(config)
+
+    fixture = repo.upsert_fixture(
+        {
+            "provider_fixture_id": "9301",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-05T18:45:00Z",
+            "home_team": "Roma",
+            "away_team": "Atalanta",
+            "status": "FT",
+            "provider": "api-football",
+        }
+    )
+
+    repo.upsert_result(
+        {
+            "fixture_id": fixture["fixture_id"],
+            "home_score": 1,
+            "away_score": 0,
+            "home_corners": 5,
+            "away_corners": 4,
+            "total_corners": 9,
+            "settled_at": "2026-09-05T21:00:00Z",
+            "provider": "api-football",
+        }
+    )
+
+    row = {
+        "fixture_id": fixture["fixture_id"],
+        "competition": "Serie A",
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": "11.5",
+        "bookmaker": "bet365.it",
+        "decision_timestamp": "2026-09-05T12:00:00Z",
+        "home_team": "Roma",
+        "away_team": "Atalanta",
+        "recommended_stake": 5.0,
+        "odds_at_decision": 2.0,
+        "predicted_probability": 0.75,
+        "EV": 0.50,
+        "quality_tier": "TOP",
+    }
+
+    suggestion_id = real_bet_ledger.suggestion_key(row)
+    real_bet_ledger.record_suggestion(tmp_path, row)
+    confirmed = real_bet_ledger.confirm_bet(
+        tmp_path,
+        suggestion_id,
+        actual_stake=5.0,
+        actual_odds=2.0,
+    )
+    assert confirmed["ok"] is True
+
+    settled = real_bet_ledger.settle_real_bet(
+        tmp_path,
+        suggestion_id,
+        "WIN",
+    )
+    assert settled["ok"] is True
+
+    monkeypatch.setattr(
+        daily_summary,
+        "_resolve_daily_fixture_statuses",
+        lambda *args, **kwargs: None,
+    )
+
+    sent = []
+    monkeypatch.setattr(
+        daily_summary,
+        "send_message",
+        lambda message: sent.append(message) or True,
+    )
+
+    result = daily_summary.maybe_send_daily_summary(
+        tmp_path,
+        completed_at="2026-09-05T21:00:00Z",
+    )
+
+    assert result["sent"] is True
+    assert len(sent) == 1
+
+    message = sent[0]
+    assert "Chiuse: 1" in message
+    assert "WIN 1 • LOSS 0 • VOID 0" in message
+    assert "Stake: €5.00" in message
+    assert "P/L: €+5.00" in message
+    assert "ROI: 100.0%" in message
+    assert "Giocate chiuse: 1" in message
+    assert "Win rate: 100.0%" in message
+    assert "P/L realizzato: €+5.00" in message
