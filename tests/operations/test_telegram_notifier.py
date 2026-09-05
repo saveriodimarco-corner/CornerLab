@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 
 from pathlib import Path
 from urllib.parse import unquote_plus
@@ -7,6 +8,7 @@ import pandas as pd
 import pytest
 
 from src.operations import automation, monitoring, telegram_notifier
+from src.operations.telegram_notifier import select_actionable_plays
 
 
 def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -37,9 +39,9 @@ def test_success_timeout_and_http_failure_are_non_blocking(monkeypatch: pytest.M
 def test_play_notifications_use_canonical_records_and_deduplicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	report = pd.DataFrame([
-		{"fixture_id": 1, "competition": "Serie A", "decision": "PLAY", "target_name": "over_9_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "9.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z", "home_team": "Juventus", "away_team": "Atalanta", "odds_at_decision": 1.91, "predicted_probability": 0.587, "EV": 0.121, "quality_tier": "TOP", "recommended_stake": 10.0, "kickoff": "20:45"},
+		{"fixture_id": 1, "competition": "Serie A", "decision": "PLAY", "target_name": "over_9_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "9.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z", "home_team": "Juventus", "away_team": "Atalanta", "odds_at_decision": 1.91, "predicted_probability": 0.75, "confidence_score": 70.0, "EV": 0.121, "quality_tier": "TOP", "recommended_stake": 10.0, "kickoff": "20:45"},
 		{"fixture_id": 2, "competition": "Serie A", "decision": "NO BET", "target_name": "over_10_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "10.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z"},
-		{"fixture_id": 3, "competition": "Serie A", "decision": "PLAY", "target_name": "over_8_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "8.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z"},
+		{"fixture_id": 3, "competition": "Serie A", "decision": "PLAY", "target_name": "over_8_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "8.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z", "predicted_probability": 0.76, "confidence_score": 71.0},
 		{"fixture_id": 4, "competition": "Premier League", "decision": "PLAY", "target_name": "over_9_5", "market": "TOTAL_CORNERS_OVER", "side": "OVER", "line": "9.5", "bookmaker": "book", "decision_timestamp": "2026-08-15T12:00:00Z"},
 	])
 	messages = []
@@ -55,7 +57,6 @@ def test_play_notifications_use_canonical_records_and_deduplicate(tmp_path: Path
 
 def test_telegram_failure_never_blocks_prematch_or_settlement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	monkeypatch.setattr(automation, "send_message", lambda *_: (_ for _ in ()).throw(RuntimeError("telegram down")))
-	monkeypatch.setattr(automation, "notify_new_plays", lambda *_: (_ for _ in ()).throw(RuntimeError("telegram down")))
 	code, payload = automation._run_job("prematch", tmp_path, "slot", lambda: {"collector": {}, "settlement": {}})
 	settlement_code, settlement_payload = automation._run_job("settlement", tmp_path, "settle", lambda: {"summary": {"total_bets": 1, "wins": 1, "losses": 0, "profit_loss": 1.0, "roi": 0.01}})
 
@@ -99,7 +100,8 @@ def _play_row(fixture_id: int, side: str, line: str, competition: str = "Serie A
 		"home_team": f"Home{fixture_id}",
 		"away_team": f"Away{fixture_id}",
 		"odds_at_decision": 2.0,
-		"predicted_probability": 0.6,
+		"predicted_probability": 0.75,
+		"confidence_score": 70.0,
 		"EV": 0.1,
 		"quality_tier": "TOP",
 		"recommended_stake": 5.0,
@@ -116,7 +118,92 @@ def test_five_or_fewer_plays_use_one_alert_per_play(tmp_path: Path, monkeypatch:
 
 	assert sent == 5
 	assert len(messages) == 5
-	assert all("NUOVA OPPORTUNIT" in unquote_plus(message.decode()) for message in messages)
+	assert all("VERIFICA BET365.IT" in unquote_plus(message.decode()) for message in messages)
+
+
+def test_select_actionable_plays_keeps_multiple_model_candidates_for_same_fixture() -> None:
+	rows = [
+		_play_row(1, "UNDER", "10.5") | {
+			"predicted_probability": 0.75,
+			"confidence_score": 70.0,
+			"kickoff_utc": "2026-08-31T18:45:00Z",
+		},
+		_play_row(1, "UNDER", "11.5") | {
+			"predicted_probability": 0.82,
+			"confidence_score": 72.0,
+			"kickoff_utc": "2026-08-31T18:45:00Z",
+		},
+	]
+
+	report = pd.DataFrame(rows)
+	selected = telegram_notifier.select_actionable_plays(
+		report,
+		now=pd.Timestamp("2026-08-30T19:00:00Z").to_pydatetime(),
+	)
+
+	assert len(selected) == 2
+	assert {row["line"] for row in selected} == {"10.5", "11.5"}
+
+
+def test_grouped_candidate_message_uses_bet365_minimum_odds_not_external_price() -> None:
+	rows = [
+		_play_row(1, "UNDER", "10.5") | {
+			"predicted_probability": 0.75,
+			"confidence_score": 70.0,
+			"odds_at_decision": 2.00,
+			"EV": 0.50,
+		},
+		_play_row(1, "UNDER", "11.5") | {
+			"predicted_probability": 0.82,
+			"confidence_score": 72.0,
+			"odds_at_decision": 1.80,
+			"EV": 0.40,
+		},
+	]
+
+	message = telegram_notifier.format_grouped_play(rows)
+
+	assert "UNDER 10.5" in message
+	assert "UNDER 11.5" in message
+	assert "Quota minima bet365.it" in message
+	assert "Quota:" not in message
+	assert "EV:" not in message
+	assert "2.00" not in message
+	assert "1.80" not in message
+
+
+def test_notify_new_plays_groups_all_model_candidates_for_same_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	_configure(monkeypatch)
+
+	rows = [
+		_play_row(1, "UNDER", "10.5") | {
+			"decision": "PLAY",
+			"predicted_probability": 0.75,
+			"confidence_score": 70.0,
+		},
+		_play_row(1, "UNDER", "11.5") | {
+			"decision": "NO BET",
+			"predicted_probability": 0.82,
+			"confidence_score": 72.0,
+		},
+	]
+
+	report = pd.DataFrame(rows)
+	messages = []
+
+	sent = telegram_notifier.notify_new_plays(
+		tmp_path,
+		report,
+		request_sender=lambda _, payload, __: messages.append(payload),
+	)
+
+	assert sent == 2
+	assert len(messages) == 1
+
+	message = unquote_plus(messages[0].decode())
+	assert "UNDER 10.5" in message
+	assert "UNDER 11.5" in message
+	assert "Quota minima bet365.it" in message
 
 
 def test_more_than_five_plays_deduplicate_by_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,12 +215,12 @@ def test_more_than_five_plays_deduplicate_by_fixture(tmp_path: Path, monkeypatch
 
 	sent = telegram_notifier.notify_new_plays(tmp_path, report, request_sender=lambda _, payload, __: messages.append(payload))
 
-	assert sent == 6
+	assert sent == 7
 	assert len(messages) == 6
 	fixture_one_message = unquote_plus(next(message for message in messages if b"Home1" in message).decode())
 	assert "OVER 9.5" in fixture_one_message
-	assert "OVER 10.5" not in fixture_one_message
-	assert "OPPORTUNIT" in fixture_one_message and "NUOVA" not in fixture_one_message
+	assert "OVER 10.5" in fixture_one_message
+	assert "VERIFICA BET365.IT" in fixture_one_message
 
 
 def test_grouping_does_not_merge_different_fixtures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,8 +247,9 @@ def test_dedup_remains_fixture_level_across_grouped_and_individual_modes(tmp_pat
 	messages = []
 	sent = telegram_notifier.notify_new_plays(tmp_path, pd.concat([report, extra_row], ignore_index=True), request_sender=lambda _, payload, __: messages.append(payload))
 
-	assert sent == 0
-	assert len(messages) == 0
+	assert sent == 1
+	assert len(messages) == 1
+	assert "UNDER 9.5" in unquote_plus(messages[0].decode())
 
 
 def test_rerun_emits_no_duplicate_play_or_prematch_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,7 +265,54 @@ def test_rerun_emits_no_duplicate_play_or_prematch_summary(tmp_path: Path, monke
 
 	assert first_code == 0 and second_code == 0
 	assert second_payload["outcome"] == "SKIPPED_IDEMPOTENT"
-	# Il primo run schedulato deve produrre un esito Telegram esplicito.
-	# Il secondo run idempotente non deve produrre un duplicato.
-	assert len(summary_calls) == 1
-	assert "ANALISI COMPLETATA" in summary_calls[0]
+	# I run prematch ordinari restano silenziosi quando non ci sono
+	# nuovi alert utili da inviare.
+	assert summary_calls == []
+
+def test_select_actionable_plays_deduplicates_same_fixture_side_line() -> None:
+	now = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+
+	row = _play_row(29, "UNDER", "10.5")
+	row["competition"] = "Serie A"
+	row["target_name"] = "under_10_5"
+	row["kickoff_utc"] = "2026-08-31T18:45:00Z"
+	row["predicted_probability"] = 0.728944
+	row["confidence_score"] = 68.247439
+
+	report = pd.DataFrame([row, row.copy(), row.copy()])
+
+	selected = select_actionable_plays(report, now=now)
+
+	assert len(selected) == 1
+	assert selected[0]["fixture_id"] == 29
+	assert selected[0]["side"] == "UNDER"
+	assert float(selected[0]["line"]) == 10.5
+
+def test_select_actionable_plays_keeps_distinct_lines_same_fixture() -> None:
+    now = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+
+    row_105 = _play_row(29, "UNDER", "10.5")
+    row_105["competition"] = "Serie A"
+    row_105["target_name"] = "under_10_5"
+    row_105["kickoff_utc"] = "2026-08-31T18:45:00Z"
+    row_105["predicted_probability"] = 0.728944
+    row_105["confidence_score"] = 68.247439
+
+    row_115 = _play_row(29, "UNDER", "11.5")
+    row_115["competition"] = "Serie A"
+    row_115["target_name"] = "under_11_5"
+    row_115["kickoff_utc"] = "2026-08-31T18:45:00Z"
+    row_115["predicted_probability"] = 0.821587
+    row_115["confidence_score"] = 68.247439
+
+    report = pd.DataFrame([
+        row_105,
+        row_105.copy(),
+        row_115,
+        row_115.copy(),
+    ])
+
+    selected = select_actionable_plays(report, now=now)
+
+    assert len(selected) == 2
+    assert {float(row["line"]) for row in selected} == {10.5, 11.5}

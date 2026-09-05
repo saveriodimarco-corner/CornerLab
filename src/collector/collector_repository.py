@@ -159,6 +159,18 @@ class CollectorRepository:
         finally:
             conn.close()
 
+    def get_fixture_by_id(self, fixture_id: int | str) -> Optional[Dict[str, Any]]:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT * FROM collector_fixtures WHERE fixture_id = ?",
+                (fixture_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+        finally:
+            conn.close()
+
     def upsert_fixture(self, fixture: Dict[str, Any]) -> Dict[str, Any]:
         conn = sqlite3.connect(self.db_path)
         try:

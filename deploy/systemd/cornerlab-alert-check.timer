@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CornerLab T-6h alert checker every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=cornerlab-alert-check.service
+
+[Install]
+WantedBy=timers.target

@@ -21,6 +21,51 @@ MIN_ODDS = 1.50
 MAX_STAKE_FRACTION = 0.05
 
 
+
+def recommended_stake_for_odds(
+    predicted_probability: float,
+    odds: float,
+    bankroll: float,
+) -> float:
+    """Return Half-Kelly stake capped at the production bankroll fraction."""
+    p = float(predicted_probability)
+    o = float(odds)
+    b = float(bankroll)
+
+    if (
+        not np.isfinite(p)
+        or not np.isfinite(o)
+        or not np.isfinite(b)
+        or p <= 0.0
+        or p > 1.0
+        or o <= 1.0
+        or b <= 0.0
+    ):
+        return 0.0
+
+    kelly_fraction = max(
+        0.0,
+        (p * (o - 1.0) - (1.0 - p)) / (o - 1.0),
+    )
+    half_kelly = kelly_fraction * 0.5
+    stake_fraction = min(half_kelly, MAX_STAKE_FRACTION)
+
+    return float(max(0.0, b * stake_fraction))
+
+
+def minimum_acceptable_odds(predicted_probability: float) -> float:
+    """Return the minimum decimal odds required to pass all production price gates."""
+    p = float(predicted_probability)
+    if not np.isfinite(p) or p <= MIN_MARKET_EDGE or p <= 0.0 or p > 1.0:
+        return float("nan")
+
+    min_for_odds = MIN_ODDS
+    min_for_edge = 1.0 / (p - MIN_MARKET_EDGE)
+    min_for_ev = (1.0 + MIN_EV) / p
+
+    return float(max(min_for_odds, min_for_edge, min_for_ev))
+
+
 def run_decision_engine(
     predictions: pd.DataFrame | None = None,
     output_dir: str | Path | None = None,

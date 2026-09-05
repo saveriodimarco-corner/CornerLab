@@ -36,6 +36,8 @@ def test_offer_and_confirm_via_callback_places_bet(tmp_path: Path, monkeypatch: 
 	_configure(monkeypatch)
 	messages = []
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda _, payload, __: messages.append(payload))
+	telegram_bot.handle_callback(tmp_path, "999", f"odds:{bet_id}", request_sender=lambda *_: None)
+	telegram_bot.handle_message(tmp_path, "999", "2.05", request_sender=lambda *_: None)
 
 	result = telegram_bot.handle_callback(tmp_path, "999", f"confirm:{bet_id}", request_sender=lambda _, payload, __: messages.append(payload))
 
@@ -78,6 +80,25 @@ def test_modify_stake_via_callback_then_message_persists_actual_stake(tmp_path: 
 	assert "Stake attuale: €3.50" in sent
 	assert "GIOCATA REGISTRATA" not in sent
 	assert f"confirm:{bet_id}" in sent
+
+
+def test_pending_suggestion_never_displays_external_suggested_odds_as_current() -> None:
+	bet = {
+		"home_team": "Inter",
+		"away_team": "Napoli",
+		"side": "UNDER",
+		"line": "10.5",
+		"suggested_odds": 1.92,
+		"suggested_stake": 5.0,
+		"actual_odds": None,
+		"actual_stake": None,
+		"quality_tier": "TOP",
+	}
+
+	message = telegram_bot.format_pending_suggestion(bet)
+
+	assert "1.92" not in message
+	assert "Quota attuale" not in message
 
 
 def test_modify_odds_via_callback_then_message_persists_actual_odds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,6 +154,8 @@ def test_skip_via_callback_has_no_bankroll_impact(tmp_path: Path, monkeypatch: p
 def test_duplicate_confirm_callback_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	_configure(monkeypatch)
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
+	telegram_bot.handle_callback(tmp_path, "999", f"odds:{bet_id}", request_sender=lambda *_: None)
+	telegram_bot.handle_message(tmp_path, "999", "2.05", request_sender=lambda *_: None)
 
 	first = telegram_bot.handle_callback(tmp_path, "999", f"confirm:{bet_id}", request_sender=lambda *_: None)
 	second = telegram_bot.handle_callback(tmp_path, "999", f"confirm:{bet_id}", request_sender=lambda *_: None)
@@ -140,7 +163,7 @@ def test_duplicate_confirm_callback_is_idempotent(tmp_path: Path, monkeypatch: p
 
 	assert first["ok"] is True
 	assert second["reason"] == "already_processed"
-	assert snapshot["open_exposure"] == 4.20
+	assert snapshot["open_exposure"] == 5.0
 
 
 def test_unauthorized_chat_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,3 +227,161 @@ def test_telegram_send_failure_does_not_corrupt_ledger(tmp_path: Path, monkeypat
 	assert bet_id == ""
 	assert result["ok"] is False
 	assert result["reason"] == "unknown_bet"
+
+
+def test_offer_fixture_confirmation_groups_multiple_candidates_in_one_message(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+
+	first = _play_row() | {
+		"side": "UNDER",
+		"line": "10.5",
+		"market": "TOTAL_CORNERS_UNDER",
+		"predicted_probability": 0.75,
+	}
+	second = _play_row() | {
+		"side": "UNDER",
+		"line": "11.5",
+		"market": "TOTAL_CORNERS_UNDER",
+		"predicted_probability": 0.82,
+	}
+
+	payloads: list[bytes] = []
+
+	bet_ids = telegram_bot.offer_fixture_confirmation(
+		tmp_path,
+		[first, second],
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+
+	sent = _sent_text(payloads)
+
+	assert len(bet_ids) == 2
+	assert len(payloads) == 1
+	assert "Inter vs Napoli" in sent
+	assert "UNDER 10.5" in sent
+	assert "UNDER 11.5" in sent
+	assert f"odds:{bet_ids[0]}" in sent
+	assert f"odds:{bet_ids[1]}" in sent
+	assert "Conferma" not in sent
+
+def test_offer_block_confirmation_sends_one_message_for_multiple_fixtures(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	rows = [
+		{
+			"fixture_id": 28,
+			"competition": "Serie A",
+			"market": "TOTAL_CORNERS_UNDER",
+			"side": "UNDER",
+			"line": "10.5",
+			"home_team": "Lecce",
+			"away_team": "Roma",
+			"predicted_probability": 0.77,
+			"confidence_score": 66.0,
+			"kickoff_utc": "2026-08-31T16:30:00Z",
+			"target_name": "under_10_5",
+		},
+		{
+			"fixture_id": 29,
+			"competition": "Serie A",
+			"market": "TOTAL_CORNERS_UNDER",
+			"side": "UNDER",
+			"line": "11.5",
+			"home_team": "Atalanta",
+			"away_team": "Bologna",
+			"predicted_probability": 0.82,
+			"confidence_score": 68.0,
+			"kickoff_utc": "2026-08-31T18:45:00Z",
+			"target_name": "under_11_5",
+		},
+	]
+
+	payloads = []
+
+	monkeypatch.setattr(
+		telegram_bot,
+		"send_message",
+		lambda text, request_sender=None, reply_markup=None: payloads.append(
+			{"text": text, "reply_markup": reply_markup}
+		) or True,
+	)
+
+	bet_ids = telegram_bot.offer_block_confirmation(tmp_path, rows)
+
+	assert len(bet_ids) == 2
+	assert len(payloads) == 1
+	assert "Lecce vs Roma" in payloads[0]["text"]
+	assert "Atalanta vs Bologna" in payloads[0]["text"]
+	assert "UNDER 10.5" in payloads[0]["text"]
+	assert "UNDER 11.5" in payloads[0]["text"]
+
+
+def test_minimum_odds_display_rounds_up_to_next_cent() -> None:
+	from src.operations.telegram_bot import _display_minimum_odds
+
+	assert _display_minimum_odds(1.542857142857) == 1.55
+	assert _display_minimum_odds(1.50) == 1.50
+	assert _display_minimum_odds(1.549999999999) == 1.55
+
+
+def test_block_candidate_can_receive_actual_odds_and_return_single_confirmation(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+
+	rows = [
+		{
+			"fixture_id": 29,
+			"competition": "Serie A",
+			"market": "TOTAL_CORNERS_UNDER",
+			"side": "UNDER",
+			"line": "11.5",
+			"home_team": "Atalanta",
+			"away_team": "Bologna",
+			"predicted_probability": 0.82,
+			"confidence_score": 68.0,
+			"kickoff_utc": "2026-08-31T18:45:00Z",
+			"target_name": "under_11_5",
+		},
+	]
+
+	bet_ids = telegram_bot.offer_block_confirmation(
+		tmp_path,
+		rows,
+		request_sender=lambda *_: None,
+	)
+
+	assert len(bet_ids) == 1
+	bet_id = bet_ids[0]
+
+	telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"odds:{bet_id}",
+		request_sender=lambda *_: None,
+	)
+
+	payloads: list[bytes] = []
+
+	result = telegram_bot.handle_message(
+		tmp_path,
+		"999",
+		"1.60",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+
+	sent = _sent_text(payloads)
+
+	assert result["ok"] is True
+	assert result["bet"]["actual_odds"] == 1.60
+	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
+	assert "Atalanta vs Bologna" in sent
+	assert "UNDER 11.5" in sent
+	assert "Quota attuale: 1.60" in sent
+	assert f"confirm:{bet_id}" in sent
+	assert "GIOCATA REGISTRATA" not in sent

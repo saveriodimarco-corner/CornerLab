@@ -51,18 +51,29 @@ def test_suggested_play_does_not_affect_bankroll(tmp_path: Path) -> None:
 	assert bet["status"] == real_bet_ledger.SUGGESTED
 
 
+def test_same_fixture_market_line_different_bookmaker_is_same_suggestion(tmp_path: Path) -> None:
+	first = _play_row(bookmaker="book_a")
+	second = _play_row(bookmaker="book_b")
+
+	first_id = real_bet_ledger.record_suggestion(tmp_path, first)
+	second_id = real_bet_ledger.record_suggestion(tmp_path, second)
+
+	assert real_bet_ledger.suggestion_key(first) == real_bet_ledger.suggestion_key(second)
+	assert first_id == second_id
+
+
 def test_confirm_suggested_stake_places_bet_and_reserves_exposure(tmp_path: Path) -> None:
 	row = _play_row()
 	suggestion_id = real_bet_ledger.suggestion_key(row)
 	real_bet_ledger.record_suggestion(tmp_path, row)
 
-	result = real_bet_ledger.confirm_bet(tmp_path, suggestion_id)
+	result = real_bet_ledger.confirm_bet(tmp_path, suggestion_id, actual_odds=2.05)
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
 	assert result["ok"] is True
 	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
 	assert result["bet"]["actual_stake"] == 5.0
-	assert result["bet"]["actual_odds"] == 1.92
+	assert result["bet"]["actual_odds"] == 2.05
 	assert snapshot["open_exposure"] == 5.0
 	assert snapshot["available_bankroll"] == 95.0
 	assert snapshot["total_bankroll"] == 100.0
@@ -147,12 +158,38 @@ def test_skip_never_touches_bankroll_and_is_idempotent(tmp_path: Path) -> None:
 	assert snapshot["total_bankroll"] == 100.0
 
 
+def test_list_open_bets_returns_only_placed_unsettled_bets(tmp_path: Path) -> None:
+	placed_row = _play_row(fixture_id=1)
+	placed_id = real_bet_ledger.suggestion_key(placed_row)
+	real_bet_ledger.record_suggestion(tmp_path, placed_row)
+	real_bet_ledger.confirm_bet(tmp_path, placed_id, actual_odds=2.05)
+
+	suggested_row = _play_row(fixture_id=2)
+	real_bet_ledger.record_suggestion(tmp_path, suggested_row)
+
+	skipped_row = _play_row(fixture_id=3)
+	skipped_id = real_bet_ledger.suggestion_key(skipped_row)
+	real_bet_ledger.record_suggestion(tmp_path, skipped_row)
+	real_bet_ledger.skip_suggestion(tmp_path, skipped_id)
+
+	settled_row = _play_row(fixture_id=4)
+	settled_id = real_bet_ledger.suggestion_key(settled_row)
+	real_bet_ledger.record_suggestion(tmp_path, settled_row)
+	real_bet_ledger.confirm_bet(tmp_path, settled_id, actual_odds=2.05)
+	real_bet_ledger.settle_real_bet(tmp_path, settled_id, "WIN")
+
+	open_bets = real_bet_ledger.list_open_bets(tmp_path)
+
+	assert [bet["suggestion_id"] for bet in open_bets] == [placed_id]
+	assert open_bets[0]["status"] == real_bet_ledger.BET_PLACED
+
+
 def test_duplicate_confirm_does_not_duplicate_bet_or_exposure(tmp_path: Path) -> None:
 	row = _play_row()
 	suggestion_id = real_bet_ledger.suggestion_key(row)
 	real_bet_ledger.record_suggestion(tmp_path, row)
 
-	first = real_bet_ledger.confirm_bet(tmp_path, suggestion_id)
+	first = real_bet_ledger.confirm_bet(tmp_path, suggestion_id, actual_odds=2.05)
 	second = real_bet_ledger.confirm_bet(tmp_path, suggestion_id, actual_stake=99.0)
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
@@ -191,7 +228,7 @@ def test_open_exposure_reduces_available_bankroll(tmp_path: Path) -> None:
 	row = _play_row(fixture_id=1, recommended_stake=5.0)
 	suggestion_id = real_bet_ledger.suggestion_key(row)
 	real_bet_ledger.record_suggestion(tmp_path, row)
-	real_bet_ledger.confirm_bet(tmp_path, suggestion_id, actual_stake=5.0)
+	real_bet_ledger.confirm_bet(tmp_path, suggestion_id, actual_stake=5.0, actual_odds=2.05)
 
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
@@ -203,12 +240,12 @@ def test_open_exposure_reduces_available_bankroll(tmp_path: Path) -> None:
 def test_stake_cap_applies_to_available_bankroll_not_total(tmp_path: Path) -> None:
 	first_row = _play_row(fixture_id=1, recommended_stake=15.0)
 	real_bet_ledger.record_suggestion(tmp_path, first_row)
-	real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(first_row), actual_stake=15.0)
+	real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(first_row), actual_stake=15.0, actual_odds=2.05)
 
 	second_row = _play_row(fixture_id=2, recommended_stake=10.0)
 	real_bet_ledger.record_suggestion(tmp_path, second_row)
-	rejected = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=10.0)
-	accepted = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=85.0 * MAX_STAKE_FRACTION)
+	rejected = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=10.0, actual_odds=2.05)
+	accepted = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=85.0 * MAX_STAKE_FRACTION, actual_odds=2.05)
 
 	assert rejected["ok"] is False
 	assert rejected["reason"] == "exceeds_stake_cap"
@@ -298,3 +335,63 @@ def test_suggested_or_skipped_bets_can_never_be_settled(tmp_path: Path) -> None:
 	assert suggested_result["ok"] is False
 	assert skipped_result["ok"] is False
 	assert snapshot["total_bankroll"] == 100.0
+
+
+def test_multiple_distinct_lines_are_allowed_for_same_fixture(tmp_path: Path) -> None:
+	first = _play_row(
+		fixture_id=77,
+		market="TOTAL_CORNERS_UNDER",
+		side="UNDER",
+		line="10.5",
+		predicted_probability=0.75,
+	)
+	second = _play_row(
+		fixture_id=77,
+		market="TOTAL_CORNERS_UNDER",
+		side="UNDER",
+		line="11.5",
+		predicted_probability=0.82,
+	)
+
+	first_suggestion_id = real_bet_ledger.suggestion_key(first)
+	second_suggestion_id = real_bet_ledger.suggestion_key(second)
+
+	real_bet_ledger.record_suggestion(tmp_path, first)
+	real_bet_ledger.record_suggestion(tmp_path, second)
+
+	first_result = real_bet_ledger.confirm_bet(
+		tmp_path,
+		first_suggestion_id,
+		actual_stake=4.0,
+		actual_odds=1.60,
+	)
+	second_result = real_bet_ledger.confirm_bet(
+		tmp_path,
+		second_suggestion_id,
+		actual_stake=4.0,
+		actual_odds=1.60,
+	)
+
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert first_result["ok"] is True
+	assert second_result["ok"] is True
+	assert first_result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert second_result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert snapshot["open_exposure"] == 8.0
+	assert _count_ledger_events(tmp_path, "BET_PLACED") == 2
+
+
+def test_record_suggestion_always_uses_bet365_as_real_bookmaker(tmp_path: Path) -> None:
+    row = _play_row(
+        fixture_id=99,
+        bookmaker="BetMGM",
+    )
+
+    real_bet_ledger.record_suggestion(tmp_path, row)
+
+    suggestion_id = real_bet_ledger.suggestion_key(row)
+    bet = real_bet_ledger.get_bet(tmp_path, suggestion_id)
+
+    assert bet is not None
+    assert bet["bookmaker"] == "bet365.it"

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from src.research.decision_engine import MAX_STAKE_FRACTION
+from src.research.decision_engine import MAX_STAKE_FRACTION, minimum_acceptable_odds, recommended_stake_for_odds
 
 
 SUGGESTED = "SUGGESTED"
@@ -24,8 +24,8 @@ def _utc_now() -> str:
 
 
 def suggestion_key(row: dict[str, Any]) -> str:
-	"""Canonical decision identity shared with the Telegram PLAY notification dedup key."""
-	return "|".join(str(row.get(field, "")) for field in ["fixture_id", "market", "side", "line", "bookmaker"])
+	"""Canonical suggestion identity, independent of external reference bookmaker."""
+	return "|".join(str(row.get(field, "")) for field in ["fixture_id", "market", "side", "line"])
 
 
 def _db_path(base_dir: Path | str) -> Path:
@@ -144,6 +144,19 @@ def get_bet_by_id(base_dir: Path | str, bet_id: str) -> dict[str, Any] | None:
 		conn.close()
 
 
+def list_open_bets(base_dir: Path | str) -> list[dict[str, Any]]:
+	"""Return all currently placed real bets awaiting settlement."""
+	conn = _connect(base_dir)
+	try:
+		rows = conn.execute(
+			"SELECT * FROM real_bets WHERE status = ? ORDER BY confirmed_timestamp, created_at",
+			(BET_PLACED,),
+		).fetchall()
+		return [dict(row) for row in rows]
+	finally:
+		conn.close()
+
+
 def record_suggestion(base_dir: Path | str, row: dict[str, Any]) -> str:
 	"""Record a model PLAY as SUGGESTED; idempotent by canonical decision identity."""
 	suggestion_id = suggestion_key(row)
@@ -174,7 +187,7 @@ def record_suggestion(base_dir: Path | str, row: dict[str, Any]) -> str:
 				row.get("market"),
 				row.get("side"),
 				row.get("line"),
-				row.get("bookmaker"),
+				"bet365.it",
 				float(row.get("recommended_stake", row.get("stake", 0.0)) or 0.0),
 				float(row.get("odds_at_decision", row.get("closing_odds", 0.0)) or 0.0),
 				float(row.get("predicted_probability", 0.0) or 0.0),
@@ -204,16 +217,40 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 
 		ensure_opening_balance(conn)
 		snapshot = _snapshot(conn)
-		pending_stake = row["actual_stake"] if row["actual_stake"] is not None else row["suggested_stake"]
-		pending_odds = row["actual_odds"] if row["actual_odds"] is not None else row["suggested_odds"]
-		stake = float(actual_stake) if actual_stake is not None else float(pending_stake or 0.0)
-		odds = float(actual_odds) if actual_odds is not None else float(pending_odds or 0.0)
+
+		# bet365-only safety rule:
+		# an external/reference bookmaker price must never be confirmed as the real bet price.
+		if actual_odds is None and row["actual_odds"] is None:
+			return {"ok": False, "reason": "actual_odds_required", "bet": row}
+
+		odds = float(actual_odds) if actual_odds is not None else float(row["actual_odds"])
+		probability = float(row["predicted_probability"] or 0.0)
+		minimum_odds = minimum_acceptable_odds(probability)
+
+		if odds <= 1.0:
+			return {"ok": False, "reason": "invalid_odds", "bet": row}
+		if not minimum_odds == minimum_odds or odds + 1e-9 < minimum_odds:
+			return {
+				"ok": False,
+				"reason": "odds_below_required_minimum",
+				"bet": row,
+				"minimum_odds": minimum_odds,
+			}
+		available = snapshot["available_bankroll"]
+
+		if actual_stake is not None:
+			stake = float(actual_stake)
+		elif row["actual_stake"] is not None:
+			stake = float(row["actual_stake"])
+		else:
+			stake = recommended_stake_for_odds(
+				predicted_probability=probability,
+				odds=odds,
+				bankroll=available,
+			)
 
 		if stake <= 0.0:
 			return {"ok": False, "reason": "invalid_stake", "bet": row}
-		if odds <= 1.0:
-			return {"ok": False, "reason": "invalid_odds", "bet": row}
-		available = snapshot["available_bankroll"]
 		if stake > available + 1e-9:
 			return {"ok": False, "reason": "insufficient_available_bankroll", "bet": row}
 		cap = available * MAX_STAKE_FRACTION

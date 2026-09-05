@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -12,7 +13,11 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from src.research.decision_engine import MAX_STAKE_FRACTION
+from src.research.decision_engine import (
+    MIN_CONFIDENCE_SCORE,
+    MIN_PREDICTED_PROBABILITY,
+    minimum_acceptable_odds,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,6 +27,26 @@ SUPPORTED_TARGETS = {
     "over_10_5", "under_10_5",
     "over_11_5", "under_11_5",
 }
+
+
+def is_model_candidate(row: dict[str, Any]) -> bool:
+    """Price-independent candidate gate; bet365 odds are evaluated later."""
+    try:
+        probability = float(row.get("predicted_probability", 0.0) or 0.0)
+        confidence = float(
+            row.get(
+                "confidence_score",
+                row.get("model_confidence", row.get("confidence", 0.0)),
+            )
+            or 0.0
+        )
+    except (TypeError, ValueError):
+        return False
+
+    return (
+        probability >= MIN_PREDICTED_PROBABILITY
+        and confidence >= MIN_CONFIDENCE_SCORE
+    )
 
 
 def _enabled() -> bool:
@@ -70,11 +95,6 @@ def format_settlement_completed(summary: dict[str, Any], timestamp: str) -> str:
 	return f"📊 CORNERLAB — SETTLEMENT\n\nGiocate chiuse: {int(summary.get('total_bets', 0))}\nWIN: {int(summary.get('wins', 0))}\nLOSS: {int(summary.get('losses', 0))}\nVOID: {int(summary.get('voids', 0))}\nP/L sessione: €{float(summary.get('profit_loss', 0.0)):+.2f}\nROI stagione: {float(summary.get('roi', 0.0)):.1%}\nOra: {timestamp}"
 
 
-def format_play(row: dict[str, Any]) -> str:
-	fixture = f"{row.get('home_team', '-')} vs {row.get('away_team', '-')}"
-	market = f"{str(row.get('side', '')).upper()} {row.get('line', '')} corner"
-	return f"🎯 CORNERLAB — NUOVA OPPORTUNITÀ\n\n{fixture}\n{market}\n\nQuota: {float(row.get('odds_at_decision', row.get('closing_odds', 0.0))):.2f}\nProbabilità modello: {float(row.get('predicted_probability', 0.0)):.1%}\nEV: {float(row.get('EV', row.get('ev', 0.0))):+.1%}\nQualità: {row.get('quality_tier', '-')}\nStake suggerito: €{float(row.get('recommended_stake', row.get('stake', 0.0))):.2f}\nCap rischio: {MAX_STAKE_FRACTION:.0%}\n\nKickoff: {row.get('kickoff', row.get('kickoff_utc', '-'))}\n\nApri CornerLab:\nhttps://cornerlabpro.com"
-
 
 MAX_INDIVIDUAL_PLAY_ALERTS = 5
 
@@ -83,17 +103,21 @@ def format_grouped_play(rows: list[dict[str, Any]]) -> str:
 	first = rows[0]
 	fixture = f"{first.get('home_team', '-')} vs {first.get('away_team', '-')}"
 	kickoff = first.get("kickoff", first.get("kickoff_utc", "-"))
-	lines = ["🎯 CORNERLAB — OPPORTUNITÀ", "", fixture, f"Kickoff: {kickoff}"]
+	lines = ["🔎 CORNERLAB — VERIFICA BET365.IT", "", fixture, f"Kickoff: {kickoff}"]
+
 	for row in rows:
+		probability = float(row.get("predicted_probability", 0.0) or 0.0)
+		minimum_odds = minimum_acceptable_odds(probability)
+		minimum_odds_display = math.ceil(minimum_odds * 100.0 - 1e-12) / 100.0
+
 		lines.append("")
 		lines.append(f"{str(row.get('side', '')).upper()} {row.get('line', '')}")
-		lines.append(f"Quota: {float(row.get('odds_at_decision', row.get('closing_odds', 0.0))):.2f}")
-		lines.append(f"Prob: {float(row.get('predicted_probability', 0.0)):.1%}")
-		lines.append(f"EV: {float(row.get('EV', row.get('ev', 0.0))):+.1%}")
+		lines.append(f"Probabilità modello: {probability:.1%}")
+		lines.append(f"Quota minima bet365.it: {minimum_odds_display:.2f}")
 		lines.append(f"Qualità: {row.get('quality_tier', '-')}")
+
 	lines.append("")
-	lines.append("Apri CornerLab:")
-	lines.append("https://cornerlabpro.com")
+	lines.append("Controlla le quote reali su bet365.it.")
 	return "\n".join(lines)
 
 
@@ -107,8 +131,8 @@ def select_actionable_plays(
     report: pd.DataFrame,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Return at most one Serie A PLAY per fixture for remaining today + tomorrow Rome time."""
-    if report.empty or "decision" not in report.columns:
+    """Return model-valid Serie A candidates for remaining today + tomorrow Rome time."""
+    if report.empty:
         return []
 
     now_utc = pd.Timestamp(now or datetime.now(timezone.utc))
@@ -123,10 +147,11 @@ def select_actionable_plays(
 
     candidates: list[dict[str, Any]] = []
 
-    for _, row in report.loc[
-        report["decision"].astype(str) == "PLAY"
-    ].iterrows():
+    for _, row in report.iterrows():
         item = row.to_dict()
+
+        if not is_model_candidate(item):
+            continue
 
         if str(item.get("competition", "")) != "Serie A":
             continue
@@ -158,30 +183,34 @@ def select_actionable_plays(
                 pass
         return float("-inf")
 
-    # Highest EV first, then probability, confidence and odds.
+    # Candidate ranking must be price-independent.
+    # Actual bet365.it odds are evaluated only after the user enters them.
     candidates.sort(
         key=lambda item: (
-            number(item, "EV", "ev"),
             number(item, "predicted_probability"),
-            number(item, "confidence_score", "confidence"),
-            number(item, "odds_at_decision", "closing_odds"),
+            number(item, "confidence_score", "model_confidence", "confidence"),
             str(item.get("target_name", "")),
-            str(item.get("bookmaker", "")),
         ),
         reverse=True,
     )
 
+    seen: set[tuple[str, str, str]] = set()
     selected: list[dict[str, Any]] = []
-    seen_fixtures: set[str] = set()
 
     for item in candidates:
-        fixture_id = str(item.get("fixture_id", ""))
-        if not fixture_id or fixture_id in seen_fixtures:
+        key = (
+            str(item.get("fixture_id", "")),
+            str(item.get("side", "")).upper(),
+            str(item.get("line", "")),
+        )
+        if key in seen:
             continue
-        seen_fixtures.add(fixture_id)
+        seen.add(key)
         selected.append(item)
 
-    # Telegram order follows kickoff chronology, not EV ranking.
+    # Telegram order follows kickoff chronology.
+    # Multiple model-valid lines for the same fixture must survive until
+    # actual bet365.it odds are known.
     selected.sort(
         key=lambda item: pd.to_datetime(
             item.get("kickoff_utc"), utc=True, errors="coerce"
@@ -216,48 +245,63 @@ def _record_notification(base_dir: Path, notification_key: str, event_type: str)
 
 def notify_new_plays(base_dir: Path | str, report: pd.DataFrame, request_sender: Callable[[str, bytes, float], None] | None = None) -> int:
 	base_dir = Path(base_dir)
-	if report.empty or "decision" not in report.columns:
+	if report.empty:
 		return 0
+
 	notified = _notified_keys(base_dir)
+
+	grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+	order: list[str] = []
 	seen_keys: set[str] = set()
-	candidates: list[tuple[str, dict[str, Any]]] = []
-	for _, row in report.loc[report["decision"].astype(str) == "PLAY"].iterrows():
+
+	for _, row in report.iterrows():
 		row_dict = row.to_dict()
-		if str(row_dict.get("target_name", "")) not in SUPPORTED_TARGETS or str(row_dict.get("competition", "")) != "Serie A":
+
+		if not is_model_candidate(row_dict):
 			continue
-		key = stable_notification_key(row_dict)
+
+		if str(row_dict.get("target_name", "")) not in SUPPORTED_TARGETS:
+			continue
+
+		if str(row_dict.get("competition", "")) != "Serie A":
+			continue
+
+		fixture_id = str(row_dict.get("fixture_id", ""))
+		if not fixture_id:
+			continue
+
+		key = "|".join(
+			[
+				f"fixture:{fixture_id}",
+				str(row_dict.get("market", "")),
+				str(row_dict.get("side", "")),
+				str(row_dict.get("line", "")),
+			]
+		)
+
 		if key in notified or key in seen_keys:
 			continue
-		seen_keys.add(key)
-		candidates.append((key, row_dict))
 
-	if not candidates:
+		seen_keys.add(key)
+
+		if fixture_id not in grouped:
+			grouped[fixture_id] = []
+			order.append(fixture_id)
+
+		grouped[fixture_id].append((key, row_dict))
+
+	if not grouped:
 		return 0
 
 	sent = 0
-	if len(candidates) <= MAX_INDIVIDUAL_PLAY_ALERTS:
-		for key, row_dict in candidates:
-			if send_message(format_play(row_dict), request_sender=request_sender):
-				_record_notification(base_dir, key, "NEW_PLAY")
-				sent += 1
-		return sent
 
-	# Above the noise threshold, group distinct markets of the same fixture into
-	# one message; deduplication is fixture-level.
-	grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-	order: list[str] = []
-	for key, row_dict in candidates:
-		fixture_key = str(row_dict.get("fixture_id", ""))
-		if fixture_key not in grouped:
-			grouped[fixture_key] = []
-			order.append(fixture_key)
-		grouped[fixture_key].append((key, row_dict))
-
-	for fixture_key in order:
-		entries = grouped[fixture_key]
+	for fixture_id in order:
+		entries = grouped[fixture_id]
 		message = format_grouped_play([row_dict for _, row_dict in entries])
+
 		if send_message(message, request_sender=request_sender):
 			for key, _ in entries:
-				_record_notification(base_dir, key, "NEW_PLAY")
+				_record_notification(base_dir, key, "MODEL_CANDIDATE")
 				sent += 1
+
 	return sent
