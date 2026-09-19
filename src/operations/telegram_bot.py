@@ -47,7 +47,7 @@ def build_play_keyboard(bet_id: str) -> dict[str, Any]:
 
 
 def build_bankroll_keyboard() -> dict[str, Any]:
-	return {"inline_keyboard": [[{"text": "➕ Aggiungi fondi", "callback_data": "deposit"}, {"text": "➖ Preleva fondi", "callback_data": "withdraw"}]]}
+	return {"inline_keyboard": [[{"text": "➕ Cash-in", "callback_data": "deposit"}, {"text": "➖ Cash-out", "callback_data": "withdraw"}]]}
 
 
 def format_suggestion_prompt(row: dict[str, Any]) -> str:
