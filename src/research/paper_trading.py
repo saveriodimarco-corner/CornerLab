@@ -100,6 +100,13 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
     scored_rows = odds_input.loc[odds_input["scoring_status"] == "SCORED"].copy()
     unavailable_rows = odds_input.loc[odds_input["scoring_status"] != "SCORED"].copy()
 
+    # External bookmaker rows are observations of the same economic market,
+    # not independent paper bets. Collapse them before the price-dependent
+    # decision engine so each fixture/market/line/side can create at most one
+    # paper-trading decision. The representative reference price is the
+    # cross-bookmaker median.
+    scored_rows = _aggregate_market_opportunities(scored_rows)
+
     decision_input = scored_rows[["match_id", "market", "closing_odds", "predicted_probability", "model_confidence"]].copy()
     scored_report = build_decision_report(decision_input, bankroll=bankroll)
     scored_report = scored_report.rename(columns={"confidence_score": "decision_confidence_score"})
@@ -161,6 +168,8 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
             ["decision", "decision_reason"],
         ] = ["NO BET", "DATA_QUALITY_BELOW_THRESHOLD"]
 
+    scored_report = _suppress_replayed_paper_bets(scored_report, output_dir)
+
     report = pd.concat([scored_report, unavailable_rows], ignore_index=True, sort=False)
     report = report.sort_values("row_order", kind="stable").reset_index(drop=True)
     for column_name, default_value in SCHEMA_STABLE_COLUMNS.items():
@@ -215,6 +224,8 @@ def run_paper_trading(base_dir: str | Path | None = None, output_dir: str | Path
         "run_parquet": str(run_parquet_path),
     }
     _append_run_history(data_dir / "run_history.jsonl", history_entry)
+
+    _record_new_paper_bets(report, output_dir)
 
     return {
         "report": report,
@@ -1329,6 +1340,180 @@ def _load_historical_matches(base_dir: Path) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+
+
+def _aggregate_market_opportunities(rows: pd.DataFrame) -> pd.DataFrame:
+    """Collapse bookmaker observations into one economic market opportunity.
+
+    External bookmaker quotes are reference-market observations, not
+    independent paper bets. The representative decision price is the median
+    closing quote across available bookmakers for the same fixture, market,
+    line and side.
+    """
+    if rows.empty:
+        return rows.copy()
+
+    keys = [
+        "fixture_id",
+        "market",
+        "line",
+        "side",
+    ]
+
+    missing = [column for column in keys + ["closing_odds"] if column not in rows.columns]
+    if missing:
+        raise KeyError(f"Missing market opportunity columns: {missing}")
+
+    frame = rows.copy()
+    frame["closing_odds"] = pd.to_numeric(
+        frame["closing_odds"],
+        errors="coerce",
+    )
+
+    # Stable deterministic ordering for traceability. The selected physical
+    # row is only a carrier for non-price metadata; its bookmaker price is
+    # replaced by the aggregate reference price below.
+    sort_columns = keys.copy()
+
+    if "bookmaker" in frame.columns:
+        frame["_bookmaker_sort"] = frame["bookmaker"].fillna("").astype(str)
+        sort_columns.append("_bookmaker_sort")
+
+    if "row_order" in frame.columns:
+        sort_columns.append("row_order")
+
+    frame = frame.sort_values(
+        sort_columns,
+        kind="stable",
+    )
+
+    aggregated_rows: list[pd.Series] = []
+
+    for _, group in frame.groupby(
+        keys,
+        dropna=False,
+        sort=True,
+    ):
+        valid_prices = group["closing_odds"].dropna()
+
+        if valid_prices.empty:
+            representative = group.iloc[0].copy()
+            representative["closing_odds"] = np.nan
+        else:
+            representative = group.iloc[0].copy()
+            representative["closing_odds"] = float(valid_prices.median())
+
+        if "opening_odds" in group.columns:
+            opening_prices = pd.to_numeric(
+                group["opening_odds"],
+                errors="coerce",
+            ).dropna()
+            representative["opening_odds"] = (
+                float(opening_prices.median())
+                if not opening_prices.empty
+                else np.nan
+            )
+
+        if "bookmaker" in representative.index:
+            representative["bookmaker"] = "MARKET_MEDIAN"
+
+        bookmakers = (
+            sorted(
+                group["bookmaker"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+            if "bookmaker" in group.columns
+            else []
+        )
+
+        representative["reference_price_method"] = "MEDIAN"
+        representative["reference_bookmaker_count"] = len(bookmakers)
+        representative["reference_bookmakers"] = ",".join(bookmakers)
+
+        if "paper_trade_row_id" in representative.index:
+            representative["paper_trade_row_id"] = "|".join(
+                [
+                    str(representative.get("fixture_id", "")),
+                    str(representative.get("market", "")),
+                    str(representative.get("side", "")),
+                    str(representative.get("line", "")),
+                ]
+            )
+
+        aggregated_rows.append(representative)
+
+    result = pd.DataFrame(aggregated_rows)
+
+    helper_columns = [
+        column
+        for column in ["_bookmaker_sort"]
+        if column in result.columns
+    ]
+    if helper_columns:
+        result = result.drop(columns=helper_columns)
+
+    if "row_order" in result.columns:
+        result = result.sort_values(
+            "row_order",
+            kind="stable",
+        )
+
+    return result.reset_index(drop=True)
+
+def _latest_odds_observations(odds: pd.DataFrame) -> pd.DataFrame:
+    """Keep only the latest observation for each logical bookmaker quote."""
+    if odds.empty:
+        return odds.copy()
+
+    keys = [
+        "fixture_id",
+        "bookmaker",
+        "market",
+        "line",
+        "side",
+    ]
+
+    required = keys + ["snapshot_timestamp"]
+    missing = [column for column in required if column not in odds.columns]
+    if missing:
+        raise KeyError(f"Missing odds observation columns: {missing}")
+
+    frame = odds.copy()
+
+    frame["_snapshot_sort"] = pd.to_datetime(
+        frame["snapshot_timestamp"],
+        utc=True,
+        errors="coerce",
+    )
+
+    if "import_timestamp" in frame.columns:
+        frame["_import_sort"] = pd.to_datetime(
+            frame["import_timestamp"],
+            utc=True,
+            errors="coerce",
+        )
+    else:
+        frame["_import_sort"] = pd.NaT
+
+    frame = (
+        frame.sort_values(
+            keys + ["_snapshot_sort", "_import_sort"],
+            kind="stable",
+            na_position="first",
+        )
+        .drop_duplicates(
+            subset=keys,
+            keep="last",
+        )
+        .drop(columns=["_snapshot_sort", "_import_sort"])
+        .reset_index(drop=True)
+    )
+
+    return frame
+
 def _load_live_fixtures_and_odds(base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     database_path = base_dir / "data" / "collector.sqlite"
     if not database_path.exists():
@@ -1385,10 +1570,7 @@ def _load_live_fixtures_and_odds(base_dir: Path) -> tuple[pd.DataFrame, pd.DataF
     odds["source_fixture_id"] = odds["provider_event_id"]
     odds["is_closing"] = True
     odds["currency"] = "EUR"
-    odds = odds.sort_values(["fixture_id", "bookmaker", "market", "line", "side", "snapshot_timestamp", "import_timestamp"]).drop_duplicates(
-        subset=["fixture_id", "bookmaker", "market", "line", "side", "snapshot_timestamp"],
-        keep="last",
-    )
+    odds = _latest_odds_observations(odds)
 
     odds = odds[[
         "match_id",
@@ -1440,3 +1622,35 @@ def build_summary_markdown(report: pd.DataFrame, validation_errors: list[str]) -
     else:
         lines.append("- Live odds validation passed without errors.")
     return "\n".join(lines) + "\n"
+
+
+def _suppress_replayed_paper_bets(
+    report: pd.DataFrame,
+    ledger_base_dir: Path,
+) -> pd.DataFrame:
+    from src.research.paper_bet_ledger import contains_bet
+
+    result = report.copy()
+
+    for index, row in result.loc[result["decision"].eq("PLAY")].iterrows():
+        if contains_bet(ledger_base_dir, row.to_dict()):
+            result.loc[index, "decision"] = "NO BET"
+            result.loc[index, "decision_reason"] = "ALREADY_PAPER_TRADED"
+            result.loc[index, "recommended_stake"] = 0.0
+            if "stake" in result.columns:
+                result.loc[index, "stake"] = 0.0
+
+    return result
+
+
+def _record_new_paper_bets(
+    report: pd.DataFrame,
+    ledger_base_dir: Path,
+) -> int:
+    from src.research.paper_bet_ledger import record_bet
+
+    recorded = 0
+    for _, row in report.loc[report["decision"].eq("PLAY")].iterrows():
+        if record_bet(ledger_base_dir, row.to_dict()):
+            recorded += 1
+    return recorded

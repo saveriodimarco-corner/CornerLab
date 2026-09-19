@@ -13,6 +13,8 @@ from src.engine.feature_store import FeatureStore
 from src.research.paper_trading import (
     _align_feature_schema,
     _build_odds_input,
+    _latest_odds_observations,
+    _aggregate_market_opportunities,
     _load_authoritative_models,
     _model_registry_key,
     _resolve_market_probability,
@@ -23,12 +25,180 @@ from src.research.paper_trading import (
 )
 from src.research.observation_freeze import build_production_baseline_manifest, resolve_current_bankroll, settle_paper_trades, write_model_observation_artifacts, write_performance_dashboard_artifacts
 from src.exceptions import BankrollUnavailableError
+from src.research.paper_bet_ledger import record_bet
+from src.research.paper_bet_ledger import record_bet
 
 
 class _DeterministicModel:
     def predict(self, frame: pd.DataFrame):
         return [0.7] * len(frame)
 
+
+
+
+def test_aggregate_market_opportunities_uses_median_and_preserves_distinct_lines() -> None:
+    rows = pd.DataFrame(
+        [
+            {
+                "row_order": 0,
+                "match_id": 33,
+                "fixture_id": 33,
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "9.5",
+                "side": "UNDER",
+                "bookmaker": "book-b",
+                "closing_odds": 1.90,
+                "opening_odds": 1.85,
+                "predicted_probability": 0.72,
+                "model_confidence": 0.72,
+                "scoring_status": "SCORED",
+                "snapshot_timestamp": "2026-09-05T15:00:00Z",
+            },
+            {
+                "row_order": 1,
+                "match_id": 33,
+                "fixture_id": 33,
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "9.5",
+                "side": "UNDER",
+                "bookmaker": "book-a",
+                "closing_odds": 2.00,
+                "opening_odds": 1.95,
+                "predicted_probability": 0.72,
+                "model_confidence": 0.72,
+                "scoring_status": "SCORED",
+                "snapshot_timestamp": "2026-09-05T15:00:00Z",
+            },
+            {
+                "row_order": 2,
+                "match_id": 33,
+                "fixture_id": 33,
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "10.5",
+                "side": "UNDER",
+                "bookmaker": "book-a",
+                "closing_odds": 1.60,
+                "opening_odds": 1.55,
+                "predicted_probability": 0.80,
+                "model_confidence": 0.72,
+                "scoring_status": "SCORED",
+                "snapshot_timestamp": "2026-09-05T15:00:00Z",
+            },
+        ]
+    )
+
+    aggregated = _aggregate_market_opportunities(rows)
+
+    assert len(aggregated) == 2
+
+    under_95 = aggregated.loc[
+        (aggregated["fixture_id"] == 33)
+        & (aggregated["line"].astype(str) == "9.5")
+        & (aggregated["side"] == "UNDER")
+    ].iloc[0]
+
+    assert under_95["closing_odds"] == pytest.approx(1.95)
+    assert under_95["reference_price_method"] == "MEDIAN"
+    assert int(under_95["reference_bookmaker_count"]) == 2
+    assert set(str(under_95["reference_bookmakers"]).split(",")) == {
+        "book-a",
+        "book-b",
+    }
+
+    under_105 = aggregated.loc[
+        (aggregated["fixture_id"] == 33)
+        & (aggregated["line"].astype(str) == "10.5")
+        & (aggregated["side"] == "UNDER")
+    ]
+
+    assert len(under_105) == 1
+    assert float(under_105.iloc[0]["closing_odds"]) == pytest.approx(1.60)
+
+    reversed_result = _aggregate_market_opportunities(
+        rows.iloc[::-1].reset_index(drop=True)
+    )
+
+    comparable = [
+        "fixture_id",
+        "market",
+        "line",
+        "side",
+        "closing_odds",
+        "reference_price_method",
+        "reference_bookmaker_count",
+        "reference_bookmakers",
+    ]
+
+    left = aggregated[comparable].sort_values(
+        ["fixture_id", "market", "line", "side"]
+    ).reset_index(drop=True)
+
+    right = reversed_result[comparable].sort_values(
+        ["fixture_id", "market", "line", "side"]
+    ).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(left, right)
+
+def test_latest_odds_observations_keeps_only_latest_snapshot_per_bookmaker_market_line_side() -> None:
+    odds = pd.DataFrame(
+        [
+            {
+                "fixture_id": 33,
+                "bookmaker": "BetMGM",
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "9.5",
+                "side": "UNDER",
+                "snapshot_timestamp": "2026-09-05T13:00:00Z",
+                "import_timestamp": "2026-09-05T13:00:01Z",
+                "decimal_odds": 1.60,
+            },
+            {
+                "fixture_id": 33,
+                "bookmaker": "BetMGM",
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "9.5",
+                "side": "UNDER",
+                "snapshot_timestamp": "2026-09-05T15:00:00Z",
+                "import_timestamp": "2026-09-05T15:00:01Z",
+                "decimal_odds": 1.69,
+            },
+            {
+                "fixture_id": 33,
+                "bookmaker": "BetRivers",
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "9.5",
+                "side": "UNDER",
+                "snapshot_timestamp": "2026-09-05T14:00:00Z",
+                "import_timestamp": "2026-09-05T14:00:01Z",
+                "decimal_odds": 1.62,
+            },
+            {
+                "fixture_id": 33,
+                "bookmaker": "BetMGM",
+                "market": "TOTAL_CORNERS_UNDER",
+                "line": "10.5",
+                "side": "UNDER",
+                "snapshot_timestamp": "2026-09-05T14:30:00Z",
+                "import_timestamp": "2026-09-05T14:30:01Z",
+                "decimal_odds": 1.50,
+            },
+        ]
+    )
+
+    latest = _latest_odds_observations(odds)
+
+    assert len(latest) == 3
+
+    betmgm_95 = latest[
+        (latest["bookmaker"] == "BetMGM")
+        & (latest["line"].astype(str) == "9.5")
+    ].iloc[0]
+
+    assert betmgm_95["snapshot_timestamp"] == "2026-09-05T15:00:00Z"
+    assert float(betmgm_95["decimal_odds"]) == 1.69
+
+    assert set(latest["bookmaker"]) == {"BetMGM", "BetRivers"}
+    assert set(latest["line"].astype(str)) == {"9.5", "10.5"}
 
 def test_build_live_fixture_features_uses_historical_state() -> None:
     historical_matches = pd.DataFrame(
@@ -140,6 +310,30 @@ def test_run_paper_trading_writes_current_artifacts(
                 }
             )
 
+    # Same economic opportunity as TESTBOOK UNDER 9.5, but from a second
+    # external bookmaker. It must contribute to the reference market price,
+    # not become a second paper bet.
+    odds_rows.append(
+        {
+            "match_id": 900001,
+            "fixture_date": "2026-08-25",
+            "home_team": "Inter",
+            "away_team": "Roma",
+            "bookmaker": "SECOND_BOOK",
+            "market": "TOTAL_CORNERS_UNDER",
+            "line": "9.5",
+            "side": "UNDER",
+            "opening_odds": 2.05,
+            "closing_odds": 2.05,
+            "odds_timestamp": "2026-08-25T10:00:00Z",
+            "source": "the-odds-api",
+            "source_fixture_id": "evt-deterministic-1",
+            "is_closing": True,
+            "currency": "EUR",
+            "import_timestamp": "2026-08-25T10:00:00Z",
+        }
+    )
+
     odds = pd.DataFrame(odds_rows)
 
     monkeypatch.setattr(
@@ -155,8 +349,48 @@ def test_run_paper_trading_writes_current_artifacts(
 
     report = result["report"]
     assert not report.empty
+
+    # 4 lines x OVER/UNDER = 8 economic opportunities.
+    # The second bookmaker above must not create a ninth decision row.
+    assert len(report) == 8
+
+    under_95 = report.loc[
+        (report["fixture_id"].astype(int) == 900001)
+        & (report["market"].astype(str) == "TOTAL_CORNERS_UNDER")
+        & (report["line"].astype(str) == "9.5")
+        & (report["side"].astype(str) == "UNDER")
+    ]
+
+    assert len(under_95) == 1
+    assert float(under_95.iloc[0]["closing_odds"]) == pytest.approx(2.00)
+    assert under_95.iloc[0]["reference_price_method"] == "MEDIAN"
+    assert int(under_95.iloc[0]["reference_bookmaker_count"]) == 2
+    assert set(
+        str(under_95.iloc[0]["reference_bookmakers"]).split(",")
+    ) == {"TESTBOOK", "SECOND_BOOK"}
     assert set(report["decision"].unique()).issubset({"PLAY", "LOW CONFIDENCE", "NO BET", "MODEL_UNAVAILABLE"})
     assert set(report.loc[report["decision"] == "MODEL_UNAVAILABLE", "decision_reason"].unique()).issubset({"NO_ACCEPTED_MODEL", "MODEL_INPUT_FAILED", "UNSUPPORTED_MARKET"})
+
+    from src.research.paper_bet_ledger import list_bets
+    play_count = int((report["decision"] == "PLAY").sum())
+    assert play_count > 0
+    assert len(list_bets(tmp_path)) == play_count
+
+    second_result = run_paper_trading(
+        base_dir=Path.cwd(),
+        output_dir=tmp_path,
+        bankroll=100.0,
+    )
+    second_report = second_result["report"]
+
+    assert int((second_report["decision"] == "PLAY").sum()) == 0
+    assert int(
+        (second_report["decision_reason"] == "ALREADY_PAPER_TRADED").sum()
+    ) == play_count
+    assert len(list_bets(tmp_path)) == play_count
+
+    from src.research.paper_bet_ledger import list_bets
+    assert len(list_bets(tmp_path)) == int((report["decision"] == "PLAY").sum())
     # Serie A production contract:
     # the authoritative total-corners Poisson model scores all four
     # operational lines. Unsupported rows may belong to competitions
@@ -211,11 +445,37 @@ def test_run_paper_trading_writes_current_artifacts(
 def test_production_manifest_and_settlement_outputs_are_written(tmp_path: Path) -> None:
     reports_dir = tmp_path / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
-    (reports_dir / "paper_trading_current.csv").write_text(
-        "run_id,decision,market_support_status,competition,fixture_id,provider_event_id,home_team,away_team,kickoff_utc,line,side,bookmaker,odds_at_decision,closing_odds,predicted_probability,fair_odds,market_implied_probability,edge,ev,decision_confidence_score,quality_tier,recommended_stake,model_artifact,model_hash,feature_schema_hash,target_name,stake,home_corners_result,away_corners_result,total_corners_result,decision_timestamp\n"
-        "r1,PLAY,SUPPORTED,Serie A,1,evt-1,Inter,Roma,2026-08-25T18:45:00Z,9.5,OVER,book-a,2.0,1.9,0.62,1.61,0.5,0.12,0.24,72.0,TOP,2.0,artifact.pkl,hash123,schema123,over_9_5,2.0,6,5,11,2026-08-25T10:00:00Z\n",
-        encoding="utf-8",
-    )
+    assert record_bet(tmp_path, {
+        "run_id": "r1",
+        "decision": "PLAY",
+        "market_support_status": "SUPPORTED",
+        "competition": "Serie A",
+        "fixture_id": 1,
+        "provider_event_id": "evt-1",
+        "home_team": "Inter",
+        "away_team": "Roma",
+        "kickoff_utc": "2026-08-25T18:45:00Z",
+        "market": "TOTAL_CORNERS_OVER",
+        "line": "9.5",
+        "side": "OVER",
+        "bookmaker": "book-a",
+        "odds_at_decision": 2.0,
+        "closing_odds": 1.9,
+        "predicted_probability": 0.62,
+        "fair_odds": 1.61,
+        "market_implied_probability": 0.5,
+        "edge": 0.12,
+        "ev": 0.24,
+        "decision_confidence_score": 72.0,
+        "quality_tier": "TOP",
+        "recommended_stake": 2.0,
+        "model_artifact": "artifact.pkl",
+        "model_hash": "hash123",
+        "feature_schema_hash": "schema123",
+        "target_name": "over_9_5",
+        "stake": 2.0,
+        "decision_timestamp": "2026-08-25T10:00:00Z",
+    }) is True
     db_path = tmp_path / "data" / "collector.sqlite"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     import sqlite3
@@ -265,6 +525,26 @@ def test_production_manifest_and_settlement_outputs_are_written(tmp_path: Path) 
     assert (tmp_path / "reports" / "paper_trading_performance.json").exists()
     assert settlement["summary"]["total_bets"] == 1
     assert settlement["summary"]["profit_loss"] > 0
+
+
+
+def test_paper_ledger_rejects_duplicate_economic_opportunity(tmp_path: Path) -> None:
+    base = {
+        "fixture_id": 1,
+        "market": "TOTAL_CORNERS_OVER",
+        "side": "OVER",
+        "line": "9.5",
+        "recommended_stake": 2.0,
+        "bookmaker": "book-a",
+    }
+
+    assert record_bet(tmp_path, base) is True
+
+    duplicate = dict(base, bookmaker="book-b")
+    assert record_bet(tmp_path, duplicate) is False
+
+    distinct_line = dict(base, line="10.5", bookmaker="book-a")
+    assert record_bet(tmp_path, distinct_line) is True
 
 
 def test_performance_dashboard_artifacts_are_deterministic_and_observational(tmp_path: Path) -> None:
@@ -603,3 +883,576 @@ def test_live_research_features_preserve_competition_identity_and_serie_a_schema
         model_input = pd.DataFrame([feature_row_to_model_input(serie_a_row.iloc[0], target_name)])
         schema_ok, _ = _align_feature_schema(model_input, bundles[registry_key]["schema"])
         assert schema_ok
+
+
+def test_settlement_uses_one_canonical_settled_chronology_for_bankroll(tmp_path: Path) -> None:
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = [
+        {
+            "run_id": "r1",
+            "decision": "PLAY",
+            "market_support_status": "SUPPORTED",
+            "competition": "Serie A",
+            "fixture_id": 1,
+            "provider_event_id": "evt-1",
+            "home_team": "Inter",
+            "away_team": "Roma",
+            "kickoff_utc": "2026-08-25T18:45:00Z",
+            "market": "TOTAL_CORNERS_OVER",
+            "line": "9.5",
+            "side": "OVER",
+            "bookmaker": "MARKET_MEDIAN",
+            "odds_at_decision": 2.0,
+            "closing_odds": 2.0,
+            "predicted_probability": 0.62,
+            "fair_odds": 1.61,
+            "market_implied_probability": 0.50,
+            "edge": 0.12,
+            "ev": 0.24,
+            "decision_confidence_score": 72.0,
+            "quality_tier": "TOP",
+            "recommended_stake": 10.0,
+            "model_artifact": "artifact.pkl",
+            "model_hash": "hash123",
+            "feature_schema_hash": "schema123",
+            "target_name": "over_9_5",
+            "stake": 10.0,
+            # Decided first, settled second.
+            "decision_timestamp": "2026-08-25T10:00:00Z",
+        },
+        {
+            "run_id": "r1",
+            "decision": "PLAY",
+            "market_support_status": "SUPPORTED",
+            "competition": "Serie A",
+            "fixture_id": 2,
+            "provider_event_id": "evt-2",
+            "home_team": "Milan",
+            "away_team": "Napoli",
+            "kickoff_utc": "2026-08-25T20:45:00Z",
+            "market": "TOTAL_CORNERS_OVER",
+            "line": "10.5",
+            "side": "OVER",
+            "bookmaker": "MARKET_MEDIAN",
+            "odds_at_decision": 2.0,
+            "closing_odds": 2.0,
+            "predicted_probability": 0.60,
+            "fair_odds": 1.67,
+            "market_implied_probability": 0.50,
+            "edge": 0.10,
+            "ev": 0.20,
+            "decision_confidence_score": 70.0,
+            "quality_tier": "TOP",
+            "recommended_stake": 20.0,
+            "model_artifact": "artifact.pkl",
+            "model_hash": "hash123",
+            "feature_schema_hash": "schema123",
+            "target_name": "over_10_5",
+            "stake": 20.0,
+            # Decided second, settled first.
+            "decision_timestamp": "2026-08-25T11:00:00Z",
+        },
+    ]
+
+    for row in rows:
+        assert record_bet(tmp_path, row) is True
+
+    db_path = tmp_path / "data" / "collector.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE collector_results ("
+            "fixture_id INTEGER UNIQUE, "
+            "home_score INTEGER, away_score INTEGER, "
+            "home_corners INTEGER, away_corners INTEGER, "
+            "total_corners INTEGER, settled_at TEXT, provider TEXT)"
+        )
+
+        # Fixture 2 settles FIRST and loses OVER 10.5: 100 -> 80.
+        conn.execute(
+            "INSERT INTO collector_results VALUES "
+            "(2, 1, 0, 4, 4, 8, "
+            "'2026-08-25T22:00:00Z', 'api-football')"
+        )
+
+        # Fixture 1 settles SECOND and wins OVER 9.5 at 2.00: 80 -> 90.
+        conn.execute(
+            "INSERT INTO collector_results VALUES "
+            "(1, 2, 1, 6, 5, 11, "
+            "'2026-08-26T10:00:00Z', 'api-football')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    settlement = settle_paper_trades(
+        base_dir=tmp_path,
+        output_dir=tmp_path,
+        bankroll_start=100.0,
+    )
+
+    settled = pd.read_csv(
+        reports_dir / "paper_trading_settled.csv"
+    ).sort_values(
+        ["settled_timestamp", "fixture_id", "line"],
+        kind="mergesort",
+    ).reset_index(drop=True)
+
+    # One canonical chronology: fixture 2 settles first, fixture 1 second.
+    assert settled["fixture_id"].tolist() == [2, 1]
+    assert settled["bankroll_before"].tolist() == pytest.approx([100.0, 80.0])
+    assert settled["bankroll_after"].tolist() == pytest.approx([80.0, 90.0])
+
+    curve = settlement["summary"]["bankroll_curve"]
+    assert [row["fixture_id"] for row in curve] == [2, 1]
+    assert [row["bankroll_after"] for row in curve] == pytest.approx([80.0, 90.0])
+
+    assert settlement["summary"]["final_bankroll"] == pytest.approx(90.0)
+    assert resolve_current_bankroll(
+        tmp_path,
+        default_bankroll=100.0,
+    ) == pytest.approx(90.0)
+
+    # The persisted ledger and payload must describe the same bankroll.
+    assert settled.iloc[-1]["bankroll_after"] == pytest.approx(
+        settlement["summary"]["final_bankroll"]
+    )
+
+
+def test_settlement_payload_uses_canonical_bankroll_columns_without_replaying_bets() -> None:
+    from src.research.observation_freeze import _build_settlement_payload
+
+    settled = pd.DataFrame(
+        [
+            {
+                "settled_timestamp": "2026-08-25T22:00:00Z",
+                "fixture_id": 2,
+                "line": "10.5",
+                "side": "OVER",
+                "target_name": "over_10_5",
+                "quality_tier": "TOP",
+                "bet_result": "LOSS",
+                "stake": 20.0,
+                "odds_at_decision": 2.0,
+                "profit_loss": -20.0,
+                "bankroll_before": 100.0,
+                "bankroll_after": 80.0,
+                "EV": 0.20,
+                "confidence": 70.0,
+                "CLV": 0.01,
+                "predicted_probability": 0.60,
+            },
+            {
+                "settled_timestamp": "2026-08-26T10:00:00Z",
+                "fixture_id": 1,
+                "line": "9.5",
+                "side": "OVER",
+                "target_name": "over_9_5",
+                "quality_tier": "TOP",
+                "bet_result": "WIN",
+                "stake": 10.0,
+                # Deliberately inconsistent with canonical bankroll_after.
+                # Replaying this price would produce 100, not 90.
+                "odds_at_decision": 3.0,
+                "profit_loss": 10.0,
+                "bankroll_before": 80.0,
+                "bankroll_after": 90.0,
+                "EV": 0.24,
+                "confidence": 72.0,
+                "CLV": 0.02,
+                "predicted_probability": 0.62,
+            },
+        ]
+    )
+
+    payload = _build_settlement_payload(
+        settled=settled,
+        bankroll_start=100.0,
+    )
+
+    assert payload["summary"]["final_bankroll"] == pytest.approx(90.0)
+    assert [
+        item["bankroll_after"]
+        for item in payload["bankroll_curve"]
+    ] == pytest.approx([80.0, 90.0])
+
+
+def test_settlement_is_idempotent_across_repeated_runs_with_existing_ledger(tmp_path: Path) -> None:
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    report_row = {
+        "run_id": "r1",
+        "decision": "PLAY",
+        "market_support_status": "SUPPORTED",
+        "competition": "Serie A",
+        "fixture_id": 1,
+        "provider_event_id": "evt-1",
+        "home_team": "Inter",
+        "away_team": "Roma",
+        "kickoff_utc": "2026-08-25T18:45:00Z",
+        "market": "TOTAL_CORNERS_OVER",
+        "line": "9.5",
+        "side": "OVER",
+        "bookmaker": "MARKET_MEDIAN",
+        "odds_at_decision": 2.0,
+        "closing_odds": 2.0,
+        "predicted_probability": 0.62,
+        "fair_odds": 1.61,
+        "market_implied_probability": 0.50,
+        "edge": 0.12,
+        "ev": 0.24,
+        "decision_confidence_score": 72.0,
+        "quality_tier": "TOP",
+        "recommended_stake": 10.0,
+        "model_artifact": "artifact.pkl",
+        "model_hash": "hash123",
+        "feature_schema_hash": "schema123",
+        "target_name": "over_9_5",
+        "stake": 10.0,
+        "decision_timestamp": "2026-08-25T10:00:00Z",
+    }
+    assert record_bet(tmp_path, report_row) is True
+
+    db_path = tmp_path / "data" / "collector.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE collector_results ("
+            "fixture_id INTEGER UNIQUE, home_score INTEGER, away_score INTEGER, "
+            "home_corners INTEGER, away_corners INTEGER, total_corners INTEGER, "
+            "settled_at TEXT, provider TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO collector_results VALUES "
+            "(1, 1, 0, 6, 5, 11, '2026-08-26T10:00:00Z', 'api-football')"
+        )
+
+    first = settle_paper_trades(
+        base_dir=tmp_path, output_dir=tmp_path, bankroll_start=100.0
+    )
+    second = settle_paper_trades(
+        base_dir=tmp_path, output_dir=tmp_path, bankroll_start=100.0
+    )
+
+    settled = pd.read_csv(reports_dir / "paper_trading_settled.csv")
+    assert len(settled) == 1
+    assert second["summary"]["total_bets"] == 1
+    assert second["summary"]["final_bankroll"] == pytest.approx(
+        first["summary"]["final_bankroll"]
+    )
+
+
+def test_settlement_appends_new_opportunity_after_existing_ledger(tmp_path: Path) -> None:
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    existing = {
+        "run_id": "old",
+        "decision_timestamp": "2026-08-25T10:00:00Z",
+        "fixture_id": 1,
+        "provider_event_id": "evt-1",
+        "competition": "Serie A",
+        "home_team": "Inter",
+        "away_team": "Roma",
+        "kickoff": "2026-08-25T18:45:00Z",
+        "line": "9.5",
+        "side": "OVER",
+        "bookmaker": "MARKET_MEDIAN",
+        "odds_at_decision": 2.0,
+        "closing_odds": 2.0,
+        "predicted_probability": 0.62,
+        "fair_odds": 1.61,
+        "market_implied_probability": 0.50,
+        "implied_probability_at_decision": 0.50,
+        "closing_implied_probability": 0.50,
+        "CLV": 0.0,
+        "edge": 0.12,
+        "EV": 0.24,
+        "confidence": 72.0,
+        "quality_tier": "TOP",
+        "recommended_stake": 10.0,
+        "model_artifact": "artifact.pkl",
+        "model_hash": "hash123",
+        "feature_schema_hash": "schema123",
+        "home_corners": 6,
+        "away_corners": 5,
+        "total_corners": 11,
+        "bet_result": "WIN",
+        "stake": 10.0,
+        "profit_loss": 10.0,
+        "bankroll_before": 100.0,
+        "bankroll_after": 110.0,
+        "settled_timestamp": "2026-08-26T10:00:00Z",
+        "target_name": "over_9_5",
+    }
+    pd.DataFrame([existing]).to_csv(
+        reports_dir / "paper_trading_settled.csv", index=False
+    )
+
+    new_report = {
+        "run_id": "new",
+        "decision": "PLAY",
+        "market_support_status": "SUPPORTED",
+        "competition": "Serie A",
+        "fixture_id": 2,
+        "provider_event_id": "evt-2",
+        "home_team": "Milan",
+        "away_team": "Napoli",
+        "kickoff_utc": "2026-08-27T18:45:00Z",
+        "market": "TOTAL_CORNERS_UNDER",
+        "line": "10.5",
+        "side": "UNDER",
+        "bookmaker": "MARKET_MEDIAN",
+        "odds_at_decision": 1.8,
+        "closing_odds": 1.8,
+        "predicted_probability": 0.65,
+        "fair_odds": 1.54,
+        "market_implied_probability": 1.0 / 1.8,
+        "edge": 0.65 - (1.0 / 1.8),
+        "ev": 0.65 * 1.8 - 1.0,
+        "decision_confidence_score": 70.0,
+        "quality_tier": "TOP",
+        "recommended_stake": 5.0,
+        "model_artifact": "artifact.pkl",
+        "model_hash": "hash123",
+        "feature_schema_hash": "schema123",
+        "target_name": "under_10_5",
+        "stake": 5.0,
+        "decision_timestamp": "2026-08-27T10:00:00Z",
+    }
+    assert record_bet(tmp_path, new_report) is True
+
+    db_path = tmp_path / "data" / "collector.sqlite"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE collector_results ("
+            "fixture_id INTEGER UNIQUE, home_score INTEGER, away_score INTEGER, "
+            "home_corners INTEGER, away_corners INTEGER, total_corners INTEGER, "
+            "settled_at TEXT, provider TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO collector_results VALUES "
+            "(2, 1, 0, 4, 4, 8, '2026-08-28T10:00:00Z', 'api-football')"
+        )
+
+    result = settle_paper_trades(
+        base_dir=tmp_path, output_dir=tmp_path, bankroll_start=100.0
+    )
+
+    settled = pd.read_csv(
+        reports_dir / "paper_trading_settled.csv"
+    ).sort_values(["settled_timestamp", "fixture_id"]).reset_index(drop=True)
+
+    assert settled["fixture_id"].tolist() == [1, 2]
+    assert settled["bankroll_before"].tolist() == pytest.approx([100.0, 110.0])
+    assert settled["bankroll_after"].tolist() == pytest.approx([110.0, 114.0])
+    assert result["summary"]["total_bets"] == 2
+    assert result["summary"]["final_bankroll"] == pytest.approx(114.0)
+
+
+def test_settlement_ignores_production_style_replays_already_in_ledger(tmp_path: Path) -> None:
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    settled_rows = [
+        {"fixture_id": 17, "side": "UNDER", "line": 10.5, "target_name": "under_10_5", "stake": 5.0, "bet_result": "LOSS", "profit_loss": -5.0, "bankroll_before": 100.0, "bankroll_after": 95.0, "settled_timestamp": "2026-09-05T14:09:54Z"},
+        {"fixture_id": 33, "side": "UNDER", "line": 9.5, "target_name": "under_9_5", "stake": 5.0, "bet_result": "LOSS", "profit_loss": -5.0, "bankroll_before": 95.0, "bankroll_after": 90.0, "settled_timestamp": "2026-09-05T18:00:06Z"},
+        {"fixture_id": 34, "side": "UNDER", "line": 9.5, "target_name": "under_9_5", "stake": 5.0, "bet_result": "LOSS", "profit_loss": -5.0, "bankroll_before": 90.0, "bankroll_after": 85.0, "settled_timestamp": "2026-09-05T21:00:07Z"},
+        {"fixture_id": 36, "side": "OVER", "line": 8.5, "target_name": "over_8_5", "stake": 5.0, "bet_result": "WIN", "profit_loss": 5.5, "bankroll_before": 85.0, "bankroll_after": 90.5, "settled_timestamp": "2026-09-06T15:00:09Z"},
+        {"fixture_id": 35, "side": "UNDER", "line": 10.5, "target_name": "under_10_5", "stake": 5.0, "bet_result": "WIN", "profit_loss": 2.675, "bankroll_before": 90.5, "bankroll_after": 93.175, "settled_timestamp": "2026-09-06T16:00:07Z"},
+    ]
+    # Match the canonical production settlement schema used by the
+    # performance payload, while keeping the regression focused on identity,
+    # stake and bankroll preservation.
+    for row in settled_rows:
+        row.update({
+            "run_id": "historical",
+            "decision_timestamp": "2026-09-01T10:00:00Z",
+            "provider_event_id": f"evt-{row['fixture_id']}",
+            "competition": "Serie A",
+            "home_team": "Home",
+            "away_team": "Away",
+            "kickoff": "2026-09-05T12:00:00Z",
+            "bookmaker": "MARKET_MEDIAN",
+            "odds_at_decision": 2.0,
+            "closing_odds": 2.0,
+            "predicted_probability": 0.60,
+            "fair_odds": 1.67,
+            "market_implied_probability": 0.50,
+            "implied_probability_at_decision": 0.50,
+            "closing_implied_probability": 0.50,
+            "CLV": 0.0,
+            "edge": 0.10,
+            "EV": 0.20,
+            "confidence": 70.0,
+            "quality_tier": "TOP",
+            "recommended_stake": row["stake"],
+            "model_artifact": "artifact.pkl",
+            "model_hash": "hash123",
+            "feature_schema_hash": "schema123",
+            "home_corners": 5,
+            "away_corners": 5,
+            "total_corners": 10,
+        })
+
+    pd.DataFrame(settled_rows).to_csv(
+        reports_dir / "paper_trading_settled.csv", index=False
+    )
+
+    current_rows = []
+    for fixture_id, market, side, line, target in [
+        (33, "TOTAL_CORNERS_UNDER", "UNDER", 9.5, "under_9_5"),
+        (34, "TOTAL_CORNERS_UNDER", "UNDER", 9.5, "under_9_5"),
+        (35, "TOTAL_CORNERS_UNDER", "UNDER", 10.5, "under_10_5"),
+        (36, "TOTAL_CORNERS_OVER", "OVER", 8.5, "over_8_5"),
+    ]:
+        current_rows.append({
+            "run_id": "production-replay",
+            "decision": "PLAY",
+            "market_support_status": "SUPPORTED",
+            "competition": "Serie A",
+            "fixture_id": fixture_id,
+            "market": market,
+            "side": side,
+            "line": line,
+            "target_name": target,
+            "recommended_stake": 4.65875,
+            "stake": 4.65875,
+        })
+
+    pd.DataFrame(current_rows).to_csv(
+        reports_dir / "paper_trading_current.csv", index=False
+    )
+
+    result = settle_paper_trades(
+        base_dir=tmp_path,
+        output_dir=tmp_path,
+        bankroll_start=100.0,
+    )
+
+    settled = pd.read_csv(
+        reports_dir / "paper_trading_settled.csv"
+    ).sort_values(
+        ["settled_timestamp", "fixture_id", "line"],
+        kind="mergesort",
+    ).reset_index(drop=True)
+
+    assert len(settled) == 5
+    assert settled["fixture_id"].tolist() == [17, 33, 34, 36, 35]
+    assert settled["stake"].tolist() == pytest.approx([5.0] * 5)
+    assert settled["profit_loss"].sum() == pytest.approx(-6.825)
+    assert settled.iloc[-1]["bankroll_after"] == pytest.approx(93.175)
+
+    assert result["summary"]["bankroll_start"] == pytest.approx(100.0)
+    assert result["summary"]["total_bets"] == 5
+    assert result["summary"]["profit_loss"] == pytest.approx(-6.825)
+    assert result["summary"]["final_bankroll"] == pytest.approx(93.175)
+
+    assert resolve_current_bankroll(
+        base_dir=tmp_path,
+        default_bankroll=100.0,
+    ) == pytest.approx(93.175)
+
+def test_paper_bet_ledger_records_each_economic_opportunity_once(tmp_path: Path) -> None:
+    from src.research.paper_bet_ledger import list_bets, record_bet
+
+    row = {
+        "fixture_id": 33,
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": 9.5,
+        "recommended_stake": 5.0,
+    }
+
+    assert record_bet(tmp_path, row) is True
+    assert record_bet(tmp_path, row) is False
+
+    bets = list_bets(tmp_path)
+    assert len(bets) == 1
+    assert bets[0]["fixture_id"] == "33"
+
+def test_paper_bet_ledger_detects_existing_opportunity(tmp_path: Path) -> None:
+    from src.research.paper_bet_ledger import contains_bet, record_bet
+
+    row = {
+        "fixture_id": 33,
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": 9.5,
+        "recommended_stake": 5.0,
+    }
+
+    assert contains_bet(tmp_path, row) is False
+    assert record_bet(tmp_path, row) is True
+    assert contains_bet(tmp_path, row) is True
+
+def test_paper_bet_ledger_detects_existing_opportunity(tmp_path: Path) -> None:
+    from src.research.paper_bet_ledger import contains_bet, record_bet
+
+    row = {
+        "fixture_id": 33,
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": 9.5,
+        "recommended_stake": 5.0,
+    }
+
+    assert contains_bet(tmp_path, row) is False
+    assert record_bet(tmp_path, row) is True
+    assert contains_bet(tmp_path, row) is True
+
+def test_suppress_replayed_paper_bets_changes_existing_play_to_no_bet(tmp_path: Path) -> None:
+    from src.research.paper_bet_ledger import record_bet
+    from src.research.paper_trading import _suppress_replayed_paper_bets
+
+    row = {
+        "fixture_id": 33,
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": 9.5,
+        "decision": "PLAY",
+        "decision_reason": "VALUE_THRESHOLD_MET",
+        "recommended_stake": 5.0,
+    }
+    record_bet(tmp_path, row)
+
+    report = pd.DataFrame([row])
+    filtered = _suppress_replayed_paper_bets(report, tmp_path)
+
+    assert filtered.iloc[0]["decision"] == "NO BET"
+    assert filtered.iloc[0]["decision_reason"] == "ALREADY_PAPER_TRADED"
+    assert float(filtered.iloc[0]["recommended_stake"]) == 0.0
+
+def test_record_new_paper_bets_records_only_play_rows(tmp_path: Path) -> None:
+    from src.research.paper_bet_ledger import list_bets
+    from src.research.paper_trading import _record_new_paper_bets
+
+    report = pd.DataFrame([
+        {
+            "fixture_id": 33, "market": "TOTAL_CORNERS_UNDER",
+            "side": "UNDER", "line": 9.5,
+            "decision": "PLAY", "recommended_stake": 5.0,
+        },
+        {
+            "fixture_id": 34, "market": "TOTAL_CORNERS_UNDER",
+            "side": "UNDER", "line": 9.5,
+            "decision": "NO BET", "recommended_stake": 0.0,
+        },
+    ])
+
+    assert _record_new_paper_bets(report, tmp_path) == 1
+    bets = list_bets(tmp_path)
+    assert len(bets) == 1
+    assert bets[0]["fixture_id"] == "33"

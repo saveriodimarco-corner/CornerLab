@@ -12,6 +12,11 @@ import numpy as np
 import pandas as pd
 
 from src.research.bankroll_tracker import BankrollTracker
+from src.research.paper_bet_ledger import (
+    list_open_bet_payloads,
+    set_bet_status,
+    suggestion_key,
+)
 from src.exceptions import BankrollUnavailableError
 
 
@@ -197,22 +202,119 @@ def settle_paper_trades(base_dir: Path | str | None = None, output_dir: Path | s
     reports_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = reports_dir / "paper_trading_current.csv"
-    if not report_path.exists():
-        payload = _empty_settlement_payload(bankroll_start=bankroll_start)
-        _write_settlement_outputs(payload, reports_dir=reports_dir, data_dir=data_dir)
-        return payload
+    settled_path = reports_dir / "paper_trading_settled.csv"
+    existing_settled = _load_csv_if_exists(settled_path)
 
-    report = pd.read_csv(report_path)
+    open_payloads = list_open_bet_payloads(output_dir)
+    report = pd.DataFrame(open_payloads)
+
+    # The settled ledger is persistent history. Settlement consumes only
+    # immutable OPEN paper bets from the persistent paper-bet ledger.
     if report.empty:
-        payload = _empty_settlement_payload(bankroll_start=bankroll_start)
+        payload = (
+            _build_settlement_payload(existing_settled, bankroll_start=bankroll_start)
+            if not existing_settled.empty
+            else _empty_settlement_payload(bankroll_start=bankroll_start)
+        )
         _write_settlement_outputs(payload, reports_dir=reports_dir, data_dir=data_dir)
         return payload
 
-    settled = _build_settled_trades(report=report, base_dir=base_dir, bankroll_start=bankroll_start)
+    report_for_settlement = report
+    if not existing_settled.empty:
+        identity_columns = ["fixture_id", "side", "line"]
+        missing_existing = [
+            column for column in identity_columns
+            if column not in existing_settled.columns
+        ]
+        missing_report = [
+            column for column in identity_columns
+            if column not in report.columns
+        ]
+        if missing_existing or missing_report:
+            raise ValueError(
+                "Cannot reconcile settled paper-trading identity: "
+                f"existing_missing={missing_existing}, report_missing={missing_report}"
+            )
+
+        existing_keys = {
+            (
+                int(row["fixture_id"]),
+                str(row["side"]).strip().upper(),
+                str(row["line"]).strip(),
+            )
+            for _, row in existing_settled.iterrows()
+        }
+
+        already_settled = report.apply(
+            lambda row: (
+                int(row["fixture_id"]),
+                str(row["side"]).strip().upper(),
+                str(row["line"]).strip(),
+            ) in existing_keys,
+            axis=1,
+        )
+        report_for_settlement = report.loc[~already_settled].copy()
+
+    continuation_bankroll = float(bankroll_start)
+    if not existing_settled.empty:
+        bets_only = existing_settled.loc[
+            existing_settled["bet_result"].astype(str).isin(["WIN", "LOSS"])
+        ].copy()
+        if not bets_only.empty:
+            bets_only["_settled_sort"] = pd.to_datetime(
+                bets_only["settled_timestamp"], utc=True, errors="coerce"
+            )
+            bets_only = bets_only.sort_values(
+                ["_settled_sort", "fixture_id", "line"],
+                kind="mergesort",
+                na_position="last",
+            )
+            continuation_bankroll = float(
+                pd.to_numeric(
+                    bets_only["bankroll_after"], errors="coerce"
+                ).iloc[-1]
+            )
+            if not np.isfinite(continuation_bankroll) or continuation_bankroll <= 0.0:
+                raise BankrollUnavailableError(
+                    "Existing settled history has invalid continuation bankroll: "
+                    f"{continuation_bankroll!r}"
+                )
+
+    new_settled = _build_settled_trades(
+        report=report_for_settlement,
+        base_dir=base_dir,
+        bankroll_start=continuation_bankroll,
+    )
+
+    if existing_settled.empty:
+        settled = new_settled
+    elif new_settled.empty:
+        settled = existing_settled
+    else:
+        settled = pd.concat(
+            [existing_settled, new_settled],
+            ignore_index=True,
+            sort=False,
+        )
+
+    if not settled.empty and "line" in settled.columns:
+        settled["line"] = pd.to_numeric(settled["line"], errors="raise")
+
     payload = _build_settlement_payload(settled, bankroll_start=bankroll_start)
     _write_settlement_outputs(payload, reports_dir=reports_dir, data_dir=data_dir)
     _write_checkpoint_reports(payload, reports_dir=reports_dir)
+
+    settled_keys = {
+        suggestion_key(row)
+        for row in payload.get("settled_rows", [])
+        if str(row.get("bet_result", "")).upper() in {"WIN", "LOSS"}
+        and row.get("market")
+    }
+    for row in open_payloads:
+        key = suggestion_key(row)
+        if key in settled_keys:
+            set_bet_status(output_dir, key, "SETTLED")
+
     return payload
 
 
@@ -231,15 +333,47 @@ def _build_settled_trades(report: pd.DataFrame, base_dir: Path, bankroll_start: 
     report["decision_timestamp"] = report["decision_timestamp"].fillna(pd.to_datetime(report.get("snapshot_timestamp", pd.NaT), errors="coerce"))
     report["decision_timestamp"] = report["decision_timestamp"].fillna(pd.Timestamp.utcnow())
 
-    results = _load_collector_results(base_dir)
-    if results.empty:
-        return pd.DataFrame()
-
     supported_mask = report["competition"].eq("Serie A") & report["decision"].eq("PLAY")
     if "market_support_status" in report.columns:
         supported_mask &= report["market_support_status"].astype(str).eq("SUPPORTED")
     play_rows = report.loc[supported_mask].copy()
     if play_rows.empty:
+        return pd.DataFrame()
+
+    # A paper-trading report must contain at most one PLAY for each economic
+    # opportunity. External bookmaker observations are reference-market data,
+    # not independent bets. Never silently choose one duplicate row here:
+    # settlement is the bankroll boundary and must fail closed on ambiguity.
+    economic_key = ["fixture_id", "market", "side", "line"]
+
+    missing_key_columns = [
+        column for column in economic_key
+        if column not in play_rows.columns
+    ]
+    if missing_key_columns:
+        raise ValueError(
+            "Paper-trading PLAY rows are missing economic identity columns: "
+            f"{missing_key_columns}"
+        )
+
+    duplicate_mask = play_rows.duplicated(
+        subset=economic_key,
+        keep=False,
+    )
+    if duplicate_mask.any():
+        duplicate_keys = (
+            play_rows.loc[duplicate_mask, economic_key]
+            .drop_duplicates()
+            .sort_values(economic_key, kind="stable")
+            .to_dict(orient="records")
+        )
+        raise ValueError(
+            "Duplicate economic paper-trading opportunities: "
+            f"{duplicate_keys}"
+        )
+
+    results = _load_collector_results(base_dir)
+    if results.empty:
         return pd.DataFrame()
 
     merged = play_rows.merge(results, on="fixture_id", how="inner", suffixes=("", "_result"))
@@ -248,7 +382,18 @@ def _build_settled_trades(report: pd.DataFrame, base_dir: Path, bankroll_start: 
 
     settled_rows: list[dict[str, Any]] = []
     tracker = BankrollTracker(bankroll_start=bankroll_start, bankroll=bankroll_start)
-    merged = merged.sort_values(["decision_timestamp", "fixture_id", "line", "bookmaker"], kind="mergesort").reset_index(drop=True)
+    # Bankroll accounting follows the chronology in which results are settled,
+    # not the chronology in which bets were decided.
+    merged["_settled_sort"] = pd.to_datetime(
+        merged["settled_at"],
+        utc=True,
+        errors="coerce",
+    )
+    merged = merged.sort_values(
+        ["_settled_sort", "fixture_id", "line", "bookmaker"],
+        kind="mergesort",
+        na_position="last",
+    ).reset_index(drop=True)
     for _, row in merged.iterrows():
         outcome = _resolve_bet_outcome(row)
         stake = float(row.get("stake", row.get("recommended_stake", 0.0)) or 0.0)
@@ -282,6 +427,7 @@ def _build_settled_trades(report: pd.DataFrame, base_dir: Path, bankroll_start: 
                 "home_team": row.get("home_team"),
                 "away_team": row.get("away_team"),
                 "kickoff": row.get("kickoff_utc"),
+                "market": row.get("market"),
                 "line": row.get("line"),
                 "side": row.get("side"),
                 "bookmaker": row.get("bookmaker"),
@@ -358,24 +504,54 @@ def _build_settlement_payload(settled: pd.DataFrame, bankroll_start: float) -> d
     settled = settled.sort_values(["settled_timestamp", "fixture_id", "line"], kind="mergesort").reset_index(drop=True)
     bets_only = settled.loc[settled["bet_result"].isin(["WIN", "LOSS"])].copy()
 
-    bankroll_tracker = BankrollTracker(bankroll_start=bankroll_start, bankroll=bankroll_start)
+    # bankroll_before/bankroll_after are the canonical settlement ledger.
+    # The payload must describe that ledger, never replay the bets independently.
     bankroll_curve: list[dict[str, Any]] = []
+    cumulative_stake = 0.0
+    peak_bankroll = float(bankroll_start)
+    max_drawdown_so_far = 0.0
+
     for _, row in bets_only.iterrows():
-        odds = float(row.get("odds_at_decision", np.nan))
         stake = float(row.get("stake", 0.0) or 0.0)
-        outcome = 1 if row["bet_result"] == "WIN" else 0
-        metrics = bankroll_tracker.update(stake=stake, outcome=outcome, odds=odds)
+        bankroll_after = float(row.get("bankroll_after", np.nan))
+        if not np.isfinite(bankroll_after):
+            raise ValueError(
+                "Settled WIN/LOSS row is missing canonical bankroll_after"
+            )
+
+        cumulative_stake += stake
+        cumulative_profit = float(bankroll_after - bankroll_start)
+        peak_bankroll = max(peak_bankroll, bankroll_after)
+
+        drawdown = (
+            float((peak_bankroll - bankroll_after) / peak_bankroll)
+            if peak_bankroll > 0.0
+            else 0.0
+        )
+        max_drawdown_so_far = max(max_drawdown_so_far, drawdown)
+
+        curve_roi = (
+            float(cumulative_profit / bankroll_start)
+            if bankroll_start
+            else 0.0
+        )
+        curve_yield = (
+            float(cumulative_profit / cumulative_stake)
+            if cumulative_stake
+            else 0.0
+        )
+
         bankroll_curve.append(
             {
                 "settled_timestamp": _format_timestamp(row.get("settled_timestamp")),
                 "fixture_id": int(row.get("fixture_id")),
                 "market": f"{row.get('side')} {row.get('line')}",
                 "stake": stake,
-                "bankroll_after": float(metrics["bankroll"]),
-                "cumulative_profit": float(metrics["cumulative_profit"]),
-                "roi": float(metrics["roi"]),
-                "yield": float(metrics["yield"]),
-                "max_drawdown": float(metrics["max_drawdown"]),
+                "bankroll_after": bankroll_after,
+                "cumulative_profit": cumulative_profit,
+                "roi": curve_roi,
+                "yield": curve_yield,
+                "max_drawdown": max_drawdown_so_far,
             }
         )
 
@@ -395,7 +571,11 @@ def _build_settlement_payload(settled: pd.DataFrame, bankroll_start: float) -> d
 
     summary = {
         "bankroll_start": float(bankroll_start),
-        "final_bankroll": float(bankroll_tracker.bankroll),
+        "final_bankroll": (
+            float(bets_only.iloc[-1]["bankroll_after"])
+            if total_bets
+            else float(bankroll_start)
+        ),
         "total_bets": total_bets,
         "wins": wins,
         "losses": losses,
@@ -553,6 +733,7 @@ def _write_settlement_outputs(payload: dict[str, Any], reports_dir: Path, data_d
             "home_team",
             "away_team",
             "kickoff",
+            "market",
             "line",
             "side",
             "bookmaker",

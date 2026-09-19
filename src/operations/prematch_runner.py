@@ -13,7 +13,7 @@ from src.collector.collector_repository import CollectorRepository
 from src.collector.fixture_collector import FixtureCollector
 from src.collector.live_provider_adapter import LiveProviderAdapter
 from src.collector.odds_collector import OddsCollector
-from src.research.observation_freeze import build_production_baseline_manifest, resolve_current_bankroll, settle_paper_trades
+from src.research.observation_freeze import build_production_baseline_manifest, resolve_current_bankroll
 from src.research.paper_trading import run_paper_trading
 
 
@@ -264,7 +264,6 @@ def run_prematch(base_dir: Path | str | None = None, output_dir: Path | str | No
         )
 
     paper_trading_result = run_paper_trading(base_dir=base_dir, output_dir=output_dir, bankroll=current_bankroll)
-    settlement_result = settle_paper_trades(base_dir=base_dir, output_dir=output_dir, bankroll_start=current_bankroll)
     completed_at = _utc_now()
 
     result: dict[str, Any] = {
@@ -293,9 +292,6 @@ def run_prematch(base_dir: Path | str | None = None, output_dir: Path | str | No
             "production_scope": "serie_a_today_tomorrow",
         },
         "paper_trading": paper_trading_result["summary"],
-        "settlement": settlement_result.get("summary", {}),
-        "performance": settlement_result.get("summary", {}),
-        "checkpoint_reports": settlement_result.get("checkpoints", {}),
         "production_baseline": baseline_manifest,
         "output_paths": {
             "report_csv": str(paper_trading_result["output_paths"]["csv"]),
@@ -303,9 +299,6 @@ def run_prematch(base_dir: Path | str | None = None, output_dir: Path | str | No
             "summary": str(paper_trading_result["output_paths"]["summary"]),
             "run_history": str(paper_trading_result["output_paths"]["history"]),
             "production_baseline": str(output_dir / "reports" / "production_baseline_serie_a.json"),
-            "settled_report_csv": str(output_dir / "reports" / "paper_trading_settled.csv"),
-            "settled_report_parquet": str(output_dir / "data" / "paper_trading" / "paper_trading_settled.parquet"),
-            "performance_report": str(output_dir / "reports" / "paper_trading_performance.json"),
         },
     }
 

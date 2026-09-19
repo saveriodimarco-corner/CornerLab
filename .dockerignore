@@ -18,3 +18,20 @@ logs/
 .vscode/
 .idea/
 .DS_Store
+# Local source backups - never include in production image
+*.backup*
+src/**/*.backup*
+src/*.backup*
+
+# Runtime / development content not required by Dockerfile.production
+data/
+reports/
+backups/
+models/
+tests/
+docs/
+deploy/
+release/
+tmp/
+tmp*/
+__pycache__/

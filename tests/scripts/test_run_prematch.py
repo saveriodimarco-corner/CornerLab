@@ -25,9 +25,21 @@ class _FakeOddsCollector:
         return payload
 
 
+class _FakeOddsApi:
+    def __init__(self):
+        self._usage = {
+            "x-requests-used": "10",
+            "x-requests-remaining": "90",
+        }
+
+    def list_sports(self):
+        return []
+
+
 class _FakeAdapter:
     def __init__(self, config):
         self.last_odds_resolution = {}
+        self.the_odds_api = _FakeOddsApi()
 
     def fetch_fixtures(self):
         return [
@@ -71,6 +83,9 @@ class _FakeRepo:
     def __init__(self, config):
         self.config = config
 
+    def record_provider_usage(self, *args, **kwargs):
+        return None
+
 
 def _fake_manifest(**_):
     return {"git_commit": "abc123", "supported_targets": ["over_9_5", "under_9_5", "over_10_5", "under_10_5"]}
@@ -83,11 +98,12 @@ def _fake_settlement(**_):
 def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(prematch_runner, "run_health_check", lambda **_: {"ok": True})
     monkeypatch.setattr(prematch_runner, "CollectorRepository", _FakeRepo)
+    monkeypatch.setattr(prematch_runner, "_latest_odds_snapshot", lambda *_: None)
+    monkeypatch.setattr(prematch_runner, "_refresh_decision", lambda *_: (True, "first_snapshot"))
     monkeypatch.setattr(prematch_runner, "FixtureCollector", _FakeFixtureCollector)
     monkeypatch.setattr(prematch_runner, "OddsCollector", _FakeOddsCollector)
     monkeypatch.setattr(prematch_runner, "LiveProviderAdapter", _FakeAdapter)
     monkeypatch.setattr(prematch_runner, "build_production_baseline_manifest", _fake_manifest)
-    monkeypatch.setattr(prematch_runner, "settle_paper_trades", _fake_settlement)
     monkeypatch.setattr(
         prematch_runner,
         "run_paper_trading",
@@ -105,8 +121,8 @@ def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypat
     result = prematch_runner.run_prematch(base_dir=tmp_path, output_dir=tmp_path, bankroll=100.0)
 
     assert result["health_ok"] is True
-    assert result["collector"]["fixtures_fetched"] == 2
-    assert result["collector"]["odds_downloaded"] == 2
+    assert result["collector"]["fixtures_fetched"] == 1
+    assert result["collector"]["odds_downloaded"] == 1
     assert result["paper_trading"]["run_id"] == "prematch-test"
     assert result["production_baseline"]["git_commit"] == "abc123"
     assert (tmp_path / "reports" / "prematch_latest.json").exists()
@@ -115,11 +131,11 @@ def test_run_prematch_orchestrates_and_persists_status(tmp_path: Path, monkeypat
 def test_run_prematch_uses_dynamic_settled_bankroll_not_fixed_default(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(prematch_runner, "run_health_check", lambda **_: {"ok": True})
     monkeypatch.setattr(prematch_runner, "CollectorRepository", _FakeRepo)
+    monkeypatch.setattr(prematch_runner, "_latest_odds_snapshot", lambda *_: None)
     monkeypatch.setattr(prematch_runner, "FixtureCollector", _FakeFixtureCollector)
     monkeypatch.setattr(prematch_runner, "OddsCollector", _FakeOddsCollector)
     monkeypatch.setattr(prematch_runner, "LiveProviderAdapter", _FakeAdapter)
     monkeypatch.setattr(prematch_runner, "build_production_baseline_manifest", _fake_manifest)
-    monkeypatch.setattr(prematch_runner, "settle_paper_trades", _fake_settlement)
 
     settled_path = tmp_path / "reports" / "paper_trading_settled.csv"
     settled_path.parent.mkdir(parents=True, exist_ok=True)

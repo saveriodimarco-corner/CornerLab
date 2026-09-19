@@ -19,7 +19,8 @@ from src.operations.real_bet_ledger import list_open_bets, settle_real_bet
 from src.operations.monitoring import refresh_operations_status
 from src.operations.prematch_runner import run_prematch
 from src.research.observation_freeze import settle_paper_trades
-from src.operations.telegram_notifier import format_settlement_completed, send_message
+from src.research.paper_bet_ledger import list_open_bets as list_open_paper_bets
+from src.operations.telegram_notifier import send_message
 from src.operations.daily_summary import maybe_send_daily_summary
 from src.operations import telegram_bot
 
@@ -248,9 +249,6 @@ def _notify_success(base_dir: Path, job_type: str, result: dict[str, Any], compl
 			# Those are handled exclusively by run_alert_check_job().
 
 		elif job_type == "settlement":
-			summary = result.get("summary", result.get("settlement", {}))
-			if int(summary.get("total_bets", 0)) > 0:
-				send_message(format_settlement_completed(summary, completed_at))
 			maybe_send_daily_summary(base_dir, completed_at)
 	except Exception:
 		return
@@ -354,37 +352,20 @@ def _prematch_with_quota(base_dir: Path) -> dict[str, Any]:
 
 
 def _paper_fixture_ids_needing_results(base_dir: Path) -> list[str]:
-	report_path = base_dir / "reports" / "paper_trading_current.csv"
-	if not report_path.exists():
-		return []
+	fixture_ids: list[str] = []
+	seen: set[str] = set()
 
-	try:
-		report = pd.read_csv(report_path)
-	except Exception:
-		return []
+	for bet in list_open_paper_bets(base_dir):
+		fixture_id = bet.get("fixture_id")
+		if fixture_id is None:
+			continue
 
-	if report.empty or "fixture_id" not in report.columns:
-		return []
+		key = str(fixture_id)
+		if key in seen:
+			continue
 
-	mask = pd.Series(True, index=report.index)
-
-	if "competition" in report.columns:
-		mask &= report["competition"].astype(str).eq("Serie A")
-
-	if "decision" in report.columns:
-		mask &= report["decision"].astype(str).eq("PLAY")
-
-	if "market_support_status" in report.columns:
-		mask &= report["market_support_status"].astype(str).eq("SUPPORTED")
-
-	fixture_ids = (
-		pd.to_numeric(report.loc[mask, "fixture_id"], errors="coerce")
-		.dropna()
-		.astype(int)
-		.astype(str)
-		.drop_duplicates()
-		.tolist()
-	)
+		seen.add(key)
+		fixture_ids.append(key)
 
 	config = CollectorConfig(db_path=base_dir / "data" / "collector.sqlite")
 	repo = CollectorRepository(config)
@@ -394,7 +375,6 @@ def _paper_fixture_ids_needing_results(base_dir: Path) -> list[str]:
 		for fixture_id in fixture_ids
 		if repo.get_result(fixture_id) is None
 	]
-
 
 def _resolve_open_real_bet_fixtures(base_dir: Path) -> dict[str, Any]:
 	config = CollectorConfig(db_path=base_dir / "data" / "collector.sqlite")

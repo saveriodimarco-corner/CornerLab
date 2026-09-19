@@ -316,3 +316,43 @@ def test_select_actionable_plays_keeps_distinct_lines_same_fixture() -> None:
 
     assert len(selected) == 2
     assert {float(row["line"]) for row in selected} == {10.5, 11.5}
+
+
+def test_settlement_job_sends_no_hourly_recap_and_checks_daily_summary(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	sent = []
+	daily_calls = []
+
+	monkeypatch.setattr(
+		automation,
+		"send_message",
+		lambda message: sent.append(message) or True,
+	)
+	monkeypatch.setattr(
+		automation,
+		"maybe_send_daily_summary",
+		lambda base_dir, completed_at: daily_calls.append((base_dir, completed_at))
+		or {"sent": False, "reason": "no_real_bets"},
+	)
+
+	code, payload = automation._run_job(
+		"settlement",
+		tmp_path,
+		"settle",
+		lambda: {
+			"summary": {
+				"total_bets": 1,
+				"wins": 1,
+				"losses": 0,
+				"profit_loss": 1.0,
+				"roi": 0.01,
+			}
+		},
+	)
+
+	assert code == 0
+	assert payload["outcome"] == "SUCCESS"
+	assert sent == []
+	assert len(daily_calls) == 1

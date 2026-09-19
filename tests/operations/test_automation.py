@@ -1164,51 +1164,19 @@ def test_automatic_real_settlement_is_idempotent_end_to_end(tmp_path: Path) -> N
 def test_paper_fixture_ids_needing_results_returns_only_unresolved_supported_plays(
     tmp_path: Path,
 ) -> None:
-    import pandas as pd
+    from src.research.paper_bet_ledger import record_bet
 
-    reports_dir = tmp_path / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-
-    pd.DataFrame(
-        [
+    for fixture_id in (31, 32):
+        assert record_bet(
+            tmp_path,
             {
-                "fixture_id": 31,
-                "competition": "Serie A",
-                "decision": "PLAY",
-                "market_support_status": "SUPPORTED",
+                "fixture_id": fixture_id,
+                "market": "TOTAL_CORNERS_UNDER",
+                "side": "UNDER",
+                "line": "9.5",
+                "recommended_stake": 2.0,
             },
-            {
-                "fixture_id": 31,
-                "competition": "Serie A",
-                "decision": "PLAY",
-                "market_support_status": "SUPPORTED",
-            },
-            {
-                "fixture_id": 32,
-                "competition": "Serie A",
-                "decision": "PLAY",
-                "market_support_status": "SUPPORTED",
-            },
-            {
-                "fixture_id": 33,
-                "competition": "Serie A",
-                "decision": "NO_BET",
-                "market_support_status": "SUPPORTED",
-            },
-            {
-                "fixture_id": 34,
-                "competition": "Premier League",
-                "decision": "PLAY",
-                "market_support_status": "SUPPORTED",
-            },
-            {
-                "fixture_id": 35,
-                "competition": "Serie A",
-                "decision": "PLAY",
-                "market_support_status": "UNSUPPORTED",
-            },
-        ]
-    ).to_csv(reports_dir / "paper_trading_current.csv", index=False)
+        ) is True
 
     config = automation.CollectorConfig(
         db_path=tmp_path / "data" / "collector.sqlite",
@@ -1359,6 +1327,35 @@ def test_settle_open_real_bets_does_not_count_failed_settlement_as_settled(
     assert result["failures"][0]["settlement"]["reason"] == "simulated_failure"
 
 
+def _create_settled_real_bet(base_dir: Path, fixture_id: int | str) -> None:
+    from src.operations import real_bet_ledger
+
+    row = {
+        "fixture_id": fixture_id,
+        "competition": "Serie A",
+        "market": "TOTAL_CORNERS_UNDER",
+        "side": "UNDER",
+        "line": "11.5",
+        "bookmaker": "bet365.it",
+        "decision_timestamp": "2026-09-05T12:00:00Z",
+        "home_team": "Test Home",
+        "away_team": "Test Away",
+        "recommended_stake": 5.0,
+        "odds_at_decision": 2.0,
+        "predicted_probability": 0.75,
+        "EV": 0.50,
+        "quality_tier": "TOP",
+    }
+    suggestion_id = real_bet_ledger.suggestion_key(row)
+    real_bet_ledger.record_suggestion(base_dir, row)
+    confirmed = real_bet_ledger.confirm_bet(
+        base_dir, suggestion_id, actual_stake=5.0, actual_odds=2.0
+    )
+    assert confirmed["ok"] is True
+    settled = real_bet_ledger.settle_real_bet(base_dir, suggestion_id, "WIN")
+    assert settled["ok"] is True
+
+
 def test_daily_summary_does_not_send_before_last_match_is_due(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1383,6 +1380,8 @@ def test_daily_summary_does_not_send_before_last_match_is_due(
             "provider": "api-football",
         }
     )
+
+    _create_settled_real_bet(tmp_path, 1)
 
     sent = []
     monkeypatch.setattr(
@@ -1455,6 +1454,8 @@ def test_daily_summary_sends_once_after_all_fixtures_terminal(
             }
         )
 
+    _create_settled_real_bet(tmp_path, fixture1["fixture_id"])
+
     monkeypatch.setattr(
         daily_summary,
         "_resolve_daily_fixture_statuses",
@@ -1524,6 +1525,8 @@ def test_daily_summary_retries_if_telegram_send_fails(
             "provider": "api-football",
         }
     )
+
+    _create_settled_real_bet(tmp_path, fixture["fixture_id"])
 
     monkeypatch.setattr(
         daily_summary,

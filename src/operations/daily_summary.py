@@ -310,6 +310,14 @@ def maybe_send_daily_summary(
             "date": target_date,
         }
 
+    fixture_ids = [str(item["fixture_id"]) for item in fixtures]
+    if not _daily_real_bets(base_dir, fixture_ids):
+        return {
+            "sent": False,
+            "reason": "no_real_bets",
+            "date": target_date,
+        }
+
     kickoffs = [
         kickoff
         for kickoff in (_parse_utc(item.get("kickoff_utc")) for item in fixtures)
