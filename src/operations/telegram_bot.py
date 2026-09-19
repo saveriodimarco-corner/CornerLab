@@ -36,11 +36,11 @@ def build_play_keyboard(bet_id: str) -> dict[str, Any]:
 		"inline_keyboard": [
 			[
 				{"text": "✅ Conferma", "callback_data": f"confirm:{bet_id}"},
-				{"text": "💶 Modifica stake", "callback_data": f"stake:{bet_id}"},
+				{"text": "❌ Annulla", "callback_data": f"skip:{bet_id}"},
 			],
 			[
-				{"text": "📈 Modifica quota", "callback_data": f"odds:{bet_id}"},
-				{"text": "❌ Non giocata", "callback_data": f"skip:{bet_id}"},
+				{"text": "💶 Stake", "callback_data": f"stake:{bet_id}"},
+				{"text": "📈 Quota", "callback_data": f"odds:{bet_id}"},
 			],
 		]
 	}
