@@ -223,3 +223,41 @@ tmp_sprint*/
 
 # CornerLab operational runtime state
 data/operations/
+
+# CornerLab local backups and temporary artifacts
+backups/
+tmp/
+*.backup
+*.backup_*
+*.backup-*
+
+# CornerLab generated paper-trading runtime state
+data/paper_trading/*.sqlite
+data/paper_trading/*.sqlite.*
+data/paper_trading/runs/
+
+# CornerLab generated operational/monitoring outputs
+reports/health_check.json
+reports/operations_status.json
+reports/model_observation_current.json
+reports/model_observation_summary.md
+reports/paper_trading_performance.json
+reports/paper_trading_performance.md
+reports/paper_trading_settled.csv
+reports/performance_dashboard_current.csv
+reports/performance_dashboard_current.json
+reports/performance_dashboard_summary.md
+reports/checkpoints/
+reports/data/
+reports/reports/
+
+data/paper_trading/*.parquet
+
+# CornerLab generated research workspace
+tmp_research_build/
+
+# CornerLab live collector database
+data/collector.sqlite
+
+# CornerLab generated paper-trading history
+data/paper_trading/run_history.jsonl

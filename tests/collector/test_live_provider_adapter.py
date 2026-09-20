@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
 from src.collector.collector_config import CollectorConfig
 from src.collector.collector_repository import CollectorRepository
 from src.collector.live_provider_adapter import LiveProviderAdapter
@@ -334,3 +336,43 @@ def test_fetch_odds_uses_direct_event_id_for_the_odds_api_fixture(monkeypatch) -
 
         assert rows
         assert rows[0]['source_fixture_id'] == 'evt-direct'
+
+
+def test_unknown_competition_does_not_fallback_to_serie_a(tmp_path):
+    config = CollectorConfig(db_path=tmp_path / "collector.sqlite")
+    CollectorRepository(config)
+    adapter = LiveProviderAdapter(config)
+
+    with pytest.raises(ValueError, match="Unsupported competition"):
+        adapter._sport_key_for_competition("Serie B")
+
+
+def test_fetch_odds_rejects_implausibly_high_decimal_odds() -> None:
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "collector.sqlite"
+        config = CollectorConfig(db_path=db_path)
+        repo = CollectorRepository(config)
+        repo.upsert_fixture({
+            "provider_fixture_id": "evt-bad-odds",
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-09-20T18:45:00Z",
+            "home_team": "AC Milan",
+            "away_team": "Lecce",
+            "status": "NS",
+            "provider": "the-odds-api",
+        })
+
+        adapter = LiveProviderAdapter(config)
+        adapter.the_odds_api = _FakeOddsApi(
+            events=[],
+            odds_rows=[{
+                "bookmaker": "BetRivers",
+                "market": "TOTAL_CORNERS_OVER",
+                "line": "9.5",
+                "side": "OVER",
+                "closing_odds": 999.0,
+            }],
+        )
+
+        assert adapter.fetch_odds("evt-bad-odds") == []

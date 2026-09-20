@@ -44,7 +44,10 @@ class OddsMatcher:
         away_aliases = self._build_aliases(event.get("away_team"))
 
         event_time = self._parse_datetime(event.get("commence_time"))
-        candidates: list[tuple[dict[str, Any], int, int]] = []
+        if event_time is None:
+            return {"match_status": "UNMATCHED", "match_id": None, "reason": "event timestamp missing or invalid"}
+
+        candidates: list[tuple[dict[str, Any], int]] = []
         for _, fixture in fixtures.iterrows():
             fixture_home = self._normalize_team(fixture.get("home_team"))
             fixture_away = self._normalize_team(fixture.get("away_team"))
@@ -58,21 +61,23 @@ class OddsMatcher:
                 season_match = str(fixture.get("season")) == str(season)
             if home_match and away_match and competition_match and season_match:
                 fixture_time = self._parse_datetime(fixture.get("date"))
-                if event_time is not None and fixture_time is not None:
-                    delta_minutes = abs(int((fixture_time - event_time).total_seconds() // 60))
-                    if delta_minutes <= tolerance_minutes:
-                        candidates.append((fixture.to_dict(), 1, delta_minutes))
-                    else:
-                        candidates.append((fixture.to_dict(), 0, delta_minutes))
-                else:
-                    candidates.append((fixture.to_dict(), 1, 0))
+                if fixture_time is None:
+                    continue
+                delta_minutes = abs(int((fixture_time - event_time).total_seconds() // 60))
+                if delta_minutes <= tolerance_minutes:
+                    candidates.append((fixture.to_dict(), delta_minutes))
 
         if not candidates:
-            return {"match_status": "UNMATCHED", "match_id": None, "reason": "no team match"}
+            return {"match_status": "UNMATCHED", "match_id": None, "reason": "no fixture within tolerance"}
 
-        scored = sorted(candidates, key=lambda item: (-item[1], item[2]))
-        best = scored[0][0]
-        exact_matches = [candidate for candidate in scored if candidate[1] == 1]
-        if len(exact_matches) > 1:
+        scored = sorted(candidates, key=lambda item: item[1])
+        if len(scored) > 1:
             return {"match_status": "AMBIGUOUS", "match_id": None, "reason": "multiple plausible fixtures"}
-        return {"match_status": "MATCHED", "match_id": int(best.get("match_id", 0)), "reason": "matched"}
+
+        best, delta_minutes = scored[0]
+        return {
+            "match_status": "MATCHED",
+            "match_id": int(best.get("match_id", 0)),
+            "reason": "matched",
+            "delta_minutes": delta_minutes,
+        }

@@ -82,13 +82,19 @@ def _connect(base_dir: Path | str) -> sqlite3.Connection:
 
 
 def ensure_opening_balance(conn: sqlite3.Connection, amount: float = OPENING_BALANCE_AMOUNT) -> None:
-	count = conn.execute("SELECT COUNT(*) FROM bankroll_ledger").fetchone()[0]
-	if int(count) == 0:
-		conn.execute(
-			"INSERT INTO bankroll_ledger (event_type, amount, bet_id, created_at, note) VALUES ('OPENING_BALANCE', ?, NULL, ?, NULL)",
-			(float(amount), _utc_now()),
-		)
+	# Serialize initialization so concurrent first use cannot create two opening balances.
+	conn.execute("BEGIN IMMEDIATE")
+	try:
+		count = conn.execute("SELECT COUNT(*) FROM bankroll_ledger").fetchone()[0]
+		if int(count) == 0:
+			conn.execute(
+				"INSERT INTO bankroll_ledger (event_type, amount, bet_id, created_at, note) VALUES ('OPENING_BALANCE', ?, NULL, ?, NULL)",
+				(float(amount), _utc_now()),
+			)
 		conn.commit()
+	except Exception:
+		conn.rollback()
+		raise
 
 
 def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -216,6 +222,17 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 			return {"ok": row["status"] == BET_PLACED, "reason": "already_processed", "bet": row}
 
 		ensure_opening_balance(conn)
+
+		# Serialize confirmation writes so status check + bankroll deduction are atomic.
+		conn.execute("BEGIN IMMEDIATE")
+		row = _fetch_bet(conn, suggestion_id)
+		if row is None:
+			conn.rollback()
+			return {"ok": False, "reason": "unknown_suggestion", "bet": None}
+		if row["status"] != SUGGESTED:
+			conn.rollback()
+			return {"ok": row["status"] == BET_PLACED, "reason": "already_processed", "bet": row}
+
 		snapshot = _snapshot(conn)
 
 		# bet365-only safety rule:

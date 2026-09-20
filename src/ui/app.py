@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+
 import json
 import os
 from datetime import datetime
@@ -205,18 +207,18 @@ def _filter_period(frame: pd.DataFrame, period_key: str, month_filter: str | Non
 	if filtered.empty:
 		return filtered
 	if period_key == "7d":
-		cutoff = pd.Timestamp.utcnow().normalize() - pd.Timedelta(days=7)
+		cutoff = pd.Timestamp.now("UTC").normalize() - pd.Timedelta(days=7)
 		filtered = filtered.loc[filtered["settled_timestamp"] >= cutoff].copy()
 	elif period_key == "current_month":
-		now = pd.Timestamp.utcnow()
+		now = pd.Timestamp.now("UTC")
 		filtered = filtered.loc[(filtered["settled_timestamp"].dt.year == now.year) & (filtered["settled_timestamp"].dt.month == now.month)].copy()
 	elif period_key == "previous_month":
-		now = pd.Timestamp.utcnow()
+		now = pd.Timestamp.now("UTC")
 		month_start = pd.Timestamp(year=now.year if now.month > 1 else now.year - 1, month=now.month - 1 if now.month > 1 else 12, day=1)
 		month_end = month_start + pd.offsets.MonthEnd(1)
 		filtered = filtered.loc[(filtered["settled_timestamp"] >= month_start) & (filtered["settled_timestamp"] < month_end)].copy()
 	elif period_key == "season":
-		now = pd.Timestamp.utcnow()
+		now = pd.Timestamp.now("UTC")
 		season_start = pd.Timestamp(year=now.year if now.month >= 8 else now.year - 1, month=8, day=1)
 		filtered = filtered.loc[filtered["settled_timestamp"] >= season_start].copy()
 	elif period_key == "all":
@@ -493,7 +495,7 @@ def _build_bankroll_curve(frame: pd.DataFrame, bankroll_start: float = 100.0) ->
 	filtered["bet_result"] = filtered.get("bet_result", pd.Series("", index=filtered.index)).astype(str).str.upper()
 	filtered = filtered.loc[filtered["bet_result"].isin({"WIN", "LOSS"})].copy()
 	if filtered.empty:
-		return pd.DataFrame({"date": [pd.Timestamp.utcnow()], "bankroll": [float(bankroll_start)]})
+		return pd.DataFrame({"date": [pd.Timestamp.now("UTC")], "bankroll": [float(bankroll_start)]})
 	filtered["settled_timestamp"] = pd.to_datetime(filtered.get("settled_timestamp", pd.Series(pd.NaT, index=filtered.index)), errors="coerce")
 	filtered = filtered.loc[filtered["settled_timestamp"].notna()].sort_values("settled_timestamp", ascending=True, kind="stable")
 	curve = []
@@ -505,7 +507,7 @@ def _build_bankroll_curve(frame: pd.DataFrame, bankroll_start: float = 100.0) ->
 			"bankroll": float(current_bankroll),
 		})
 	if not curve:
-		curve.append({"date": pd.Timestamp.utcnow(), "bankroll": float(bankroll_start)})
+		curve.append({"date": pd.Timestamp.now("UTC"), "bankroll": float(bankroll_start)})
 	return pd.DataFrame(curve)
 
 
@@ -682,7 +684,7 @@ def _verify_login(password: str) -> bool:
 	expected_password = os.getenv("CORNERLAB_APP_PASSWORD", "")
 	if not expected_password:
 		return False
-	return password == expected_password
+	return hmac.compare_digest(password, expected_password)
 
 
 def _read_report(report_path: Path) -> pd.DataFrame:

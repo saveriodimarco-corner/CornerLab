@@ -7,6 +7,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.research.kelly import full_kelly, half_kelly
+
 
 SUPPORTED_MARKETS = {"OVER 8.5", "OVER 9.5", "OVER 10.5", "OVER 11.5"}
 
@@ -43,12 +45,8 @@ def recommended_stake_for_odds(
     ):
         return 0.0
 
-    kelly_fraction = max(
-        0.0,
-        (p * (o - 1.0) - (1.0 - p)) / (o - 1.0),
-    )
-    half_kelly = kelly_fraction * 0.5
-    stake_fraction = min(half_kelly, MAX_STAKE_FRACTION)
+    half_kelly_fraction = half_kelly(p, o)
+    stake_fraction = min(half_kelly_fraction, MAX_STAKE_FRACTION)
 
     return float(max(0.0, b * stake_fraction))
 
@@ -122,12 +120,14 @@ def build_decision_report(predictions: pd.DataFrame, bankroll: float = 100.0) ->
         frame["predicted_probability"] * frame["closing_odds"] - 1.0,
         np.nan,
     )
-    report["kelly_fraction"] = np.where(
-        frame["predicted_probability"].notna() & frame["closing_odds"].notna(),
-        np.maximum(0.0, (frame["predicted_probability"] * (frame["closing_odds"] - 1.0) - (1.0 - frame["predicted_probability"])) / np.maximum(frame["closing_odds"] - 1.0, 1e-9)),
-        0.0,
-    )
-    report["half_kelly"] = report["kelly_fraction"] * 0.5
+    report["kelly_fraction"] = [
+        full_kelly(p, o)
+        for p, o in zip(frame["predicted_probability"], frame["closing_odds"])
+    ]
+    report["half_kelly"] = [
+        half_kelly(p, o)
+        for p, o in zip(frame["predicted_probability"], frame["closing_odds"])
+    ]
     report["stake_cap_fraction"] = MAX_STAKE_FRACTION
     report["stake_fraction_used"] = np.minimum(report["half_kelly"], MAX_STAKE_FRACTION)
     report["recommended_stake"] = np.where(

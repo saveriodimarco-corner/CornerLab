@@ -76,6 +76,9 @@ class LiveProviderAdapter:
         except (TypeError, ValueError):
             return None
 
+        if decimal_odds <= 1.0 or decimal_odds > TheOddsApiProvider.MAX_DECIMAL_ODDS:
+            return None
+
         return {
             "bookmaker": bookmaker_name or "unknown",
             "market": "TOTAL_CORNERS_OVER" if side == "OVER" else "TOTAL_CORNERS_UNDER",
@@ -161,7 +164,7 @@ class LiveProviderAdapter:
                     decimal_odds = float(odd)
                 except (TypeError, ValueError):
                     continue
-                if decimal_odds <= 1.0:
+                if decimal_odds <= 1.0 or decimal_odds > TheOddsApiProvider.MAX_DECIMAL_ODDS:
                     continue
                 rows.append(
                     {
@@ -199,11 +202,11 @@ class LiveProviderAdapter:
             conn.close()
 
     def _sport_key_for_competition(self, competition: str) -> str:
-        normalized = str(competition or "Serie A").strip().lower()
+        normalized = str(competition or "").strip().lower()
         for item in self.COMPETITIONS:
             if item["name"].lower() == normalized:
                 return str(item["sport_key"])
-        return str(self.COMPETITIONS[0]["sport_key"])
+        raise ValueError(f"Unsupported competition: {competition!r}")
 
     def _list_the_odds_events(self, competition: str) -> List[Dict[str, Any]]:
         sport_key = self._sport_key_for_competition(competition)

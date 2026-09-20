@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -199,6 +200,30 @@ def test_duplicate_confirm_does_not_duplicate_bet_or_exposure(tmp_path: Path) ->
 	assert snapshot["open_exposure"] == 5.0
 	assert _count_ledger_events(tmp_path, "BET_PLACED") == 1
 
+
+
+def test_concurrent_duplicate_confirm_creates_single_ledger_entry(tmp_path: Path) -> None:
+	row = _play_row()
+	suggestion_id = real_bet_ledger.suggestion_key(row)
+	real_bet_ledger.record_suggestion(tmp_path, row)
+
+	def confirm() -> dict:
+		return real_bet_ledger.confirm_bet(
+			tmp_path,
+			suggestion_id,
+			actual_stake=5.0,
+			actual_odds=2.05,
+		)
+
+	with ThreadPoolExecutor(max_workers=2) as executor:
+		results = list(executor.map(lambda _: confirm(), range(2)))
+
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert all(result["ok"] is True for result in results)
+	assert _count_ledger_events(tmp_path, "BET_PLACED") == 1
+	assert snapshot["open_exposure"] == 5.0
+	assert snapshot["available_bankroll"] == 95.0
 
 def test_deposit_increases_bankroll(tmp_path: Path) -> None:
 	result = real_bet_ledger.record_deposit(tmp_path, 50.0)

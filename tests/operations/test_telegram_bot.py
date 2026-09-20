@@ -385,3 +385,81 @@ def test_block_candidate_can_receive_actual_odds_and_return_single_confirmation(
 	assert "Quota attuale: 1.60" in sent
 	assert f"confirm:{bet_id}" in sent
 	assert "GIOCATA REGISTRATA" not in sent
+
+
+def test_pending_state_survives_action_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	_configure(monkeypatch)
+	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
+	telegram_bot.handle_callback(tmp_path, "999", f"stake:{bet_id}", request_sender=lambda *_: None)
+
+	def fail_modify(*args, **kwargs):
+		raise RuntimeError("simulated failure")
+
+	monkeypatch.setattr(real_bet_ledger, "modify_stake", fail_modify)
+
+	with pytest.raises(RuntimeError, match="simulated failure"):
+		telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda *_: None)
+
+	pending = telegram_bot._read_pending_state(tmp_path)
+	assert pending["999"]["action"] == "modify_stake"
+	assert pending["999"]["bet_id"] == bet_id
+
+
+def test_expired_pending_state_is_rejected_and_removed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	_configure(monkeypatch)
+	telegram_bot._set_pending(
+		tmp_path,
+		"999",
+		{"action": "deposit", "created_at": "2000-01-01T00:00:00Z"},
+	)
+
+	result = telegram_bot.handle_message(
+		tmp_path,
+		"999",
+		"10.00",
+		request_sender=lambda *_: None,
+	)
+
+	assert result["ok"] is False
+	assert result["reason"] == "pending_interaction_expired"
+	assert "999" not in telegram_bot._read_pending_state(tmp_path)
+
+
+def test_successful_deposit_clears_pending_before_notification_failure(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+	telegram_bot.handle_callback(tmp_path, "999", "deposit", request_sender=lambda *_: None)
+
+	def fail_send(*args, **kwargs):
+		raise RuntimeError("simulated notification failure")
+
+	monkeypatch.setattr(telegram_bot, "send_message", fail_send)
+
+	with pytest.raises(RuntimeError, match="simulated notification failure"):
+		telegram_bot.handle_message(tmp_path, "999", "10", request_sender=lambda *_: None)
+
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+	assert snapshot["total_bankroll"] == 110.0
+	assert "999" not in telegram_bot._read_pending_state(tmp_path)
+
+
+def test_successful_withdrawal_clears_pending_before_notification_failure(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+	telegram_bot.handle_callback(tmp_path, "999", "withdraw", request_sender=lambda *_: None)
+
+	def fail_send(*args, **kwargs):
+		raise RuntimeError("simulated notification failure")
+
+	monkeypatch.setattr(telegram_bot, "send_message", fail_send)
+
+	with pytest.raises(RuntimeError, match="simulated notification failure"):
+		telegram_bot.handle_message(tmp_path, "999", "10", request_sender=lambda *_: None)
+
+	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+	assert snapshot["total_bankroll"] == 90.0
+	assert "999" not in telegram_bot._read_pending_state(tmp_path)

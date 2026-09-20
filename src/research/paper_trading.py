@@ -416,7 +416,7 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
                     "source": "paper_trading_live_fixture",
                     "source_file_name": "paper_trading_live_fixture",
                     "source_url": "paper_trading_live_fixture",
-                    "import_date": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "import_date": pd.Timestamp.now("UTC").strftime("%Y-%m-%d %H:%M:%S"),
                     "fixture_id": fixture_id,
                     "row_hash": f"live-{fixture_id}",
                 }

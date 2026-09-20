@@ -53,6 +53,22 @@ class TestTheOddsApiProvider:
         assert set(normalized["line"].tolist()) == {"8.5", "11.5"}
         assert set(normalized["market"].tolist()) == {"TOTAL_CORNERS_OVER", "TOTAL_CORNERS_UNDER"}
 
+    def test_normalize_rejects_implausibly_high_decimal_odds(self) -> None:
+        provider = TheOddsApiProvider(api_key="test-key")
+        raw = [{
+            "id": "evt-bad-odds",
+            "bookmakers": [{
+                "markets": [{
+                    "key": "alternate_totals_corners",
+                    "outcomes": [
+                        {"name": "Over", "price": 999.0, "point": 9.5},
+                    ],
+                }],
+            }],
+        }]
+
+        assert provider.normalize_odds(raw).empty
+
     def test_normalize_rejects_goals_totals(self) -> None:
         provider = TheOddsApiProvider(api_key="test-key")
         raw = [{
@@ -195,3 +211,31 @@ def test_normalization_is_deterministic(response) -> None:
     first = provider.normalize_odds(response)
     second = provider.normalize_odds(response)
     assert first.equals(second)
+
+def test_fixture_matching_rejects_outside_tolerance() -> None:
+    matcher = OddsMatcher()
+    fixtures = pd.DataFrame([
+        {"match_id": 201, "home_team": "Juventus", "away_team": "Inter",
+         "date": "2025-08-23T22:00:00Z"},
+    ])
+    result = matcher.match_event_to_fixture(
+        event={"home_team": "Juventus", "away_team": "Inter",
+               "commence_time": "2025-08-23T20:00:00Z"},
+        fixtures=fixtures,
+        tolerance_minutes=30,
+    )
+    assert result["match_status"] == "UNMATCHED"
+
+
+def test_fixture_matching_rejects_missing_timestamp() -> None:
+    matcher = OddsMatcher()
+    fixtures = pd.DataFrame([
+        {"match_id": 202, "home_team": "Juventus", "away_team": "Inter",
+         "date": "2025-08-23T20:00:00Z"},
+    ])
+    result = matcher.match_event_to_fixture(
+        event={"home_team": "Juventus", "away_team": "Inter"},
+        fixtures=fixtures,
+        tolerance_minutes=30,
+    )
+    assert result["match_status"] == "UNMATCHED"

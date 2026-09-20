@@ -15,6 +15,7 @@ from src.data.providers.odds.base_odds_provider import BaseOddsProvider
 
 
 class TheOddsApiProvider(BaseOddsProvider):
+    MAX_DECIMAL_ODDS = 10.0
     name = "the_odds_api"
 
     def __init__(
@@ -242,7 +243,7 @@ class TheOddsApiProvider(BaseOddsProvider):
                         if not isinstance(outcome.get("price"), (int, float)):
                             continue
                         price = float(outcome.get("price", 1.0))
-                        if price <= 1.0:
+                        if price <= 1.0 or price > self.MAX_DECIMAL_ODDS:
                             continue
                         side = str(outcome.get("name") or "").upper()
                         if side not in {"OVER", "UNDER"}:

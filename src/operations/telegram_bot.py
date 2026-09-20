@@ -11,6 +11,7 @@ import json
 import os
 import re
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -20,6 +21,7 @@ from src.research.decision_engine import minimum_acceptable_odds, recommended_st
 
 
 _NUMBER_PATTERN = re.compile(r"^-?\d+(\.\d+)?$")
+_PENDING_TTL = timedelta(minutes=30)
 
 # Forbidden by design: this module never triggers prematch/settlement/retraining,
 # never changes thresholds/staking policy, and never executes shell commands.
@@ -205,6 +207,8 @@ def _write_pending_state(base_dir: Path | str, state: dict[str, Any]) -> None:
 
 def _set_pending(base_dir: Path | str, chat_id: Any, entry: dict[str, Any]) -> None:
 	state = _read_pending_state(base_dir)
+	entry = dict(entry)
+	entry.setdefault("created_at", datetime.now(timezone.utc).isoformat())
 	state[str(chat_id)] = entry
 	_write_pending_state(base_dir, state)
 
@@ -326,12 +330,23 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 	if pending is None:
 		# Arbitrary free text with no pending interaction must never trigger anything.
 		return {"ok": False, "reason": "no_pending_interaction"}
+
+	try:
+		created_at = datetime.fromisoformat(str(pending.get("created_at", "")).replace("Z", "+00:00"))
+		if created_at.tzinfo is None:
+			created_at = created_at.replace(tzinfo=timezone.utc)
+		expired = datetime.now(timezone.utc) - created_at > _PENDING_TTL
+	except (TypeError, ValueError):
+		expired = True
+
+	if expired:
+		_pop_pending(base_dir, chat_id)
+		return {"ok": False, "reason": "pending_interaction_expired"}
 	if not _NUMBER_PATTERN.match(text):
 		return {"ok": False, "reason": "invalid_number"}
 
 	amount = float(text)
 	action = pending.get("action")
-	_pop_pending(base_dir, chat_id)
 
 	if action == "modify_stake":
 		bet = real_bet_ledger.get_bet_by_id(base_dir, pending.get("bet_id"))
@@ -339,6 +354,8 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 			return {"ok": False, "reason": "unknown_bet"}
 		result = real_bet_ledger.modify_stake(base_dir, bet["suggestion_id"], amount)
 		_resend_suggestion(result, request_sender)
+		if result.get("ok"):
+			_pop_pending(base_dir, chat_id)
 		return result
 	if action == "modify_odds":
 		bet = real_bet_ledger.get_bet_by_id(base_dir, pending.get("bet_id"))
@@ -382,15 +399,19 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 				)
 
 		_resend_suggestion(result, request_sender)
+		if result.get("ok"):
+			_pop_pending(base_dir, chat_id)
 		return result
 	if action == "deposit":
 		result = real_bet_ledger.record_deposit(base_dir, amount)
 		if result.get("ok"):
+			_pop_pending(base_dir, chat_id)
 			send_message(format_bankroll_message(result["snapshot"]), request_sender=request_sender)
 		return result
 	if action == "withdraw":
 		result = real_bet_ledger.record_withdrawal(base_dir, amount)
 		if result.get("ok"):
+			_pop_pending(base_dir, chat_id)
 			send_message(format_bankroll_message(result["snapshot"]), request_sender=request_sender)
 		return result
 	return {"ok": False, "reason": "unknown_pending_action"}

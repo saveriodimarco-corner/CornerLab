@@ -331,7 +331,7 @@ def _build_settled_trades(report: pd.DataFrame, base_dir: Path, bankroll_start: 
     report["bookmaker"] = report.get("bookmaker", "").astype(str)
     report["decision_timestamp"] = pd.to_datetime(report.get("decision_timestamp", pd.NaT), errors="coerce")
     report["decision_timestamp"] = report["decision_timestamp"].fillna(pd.to_datetime(report.get("snapshot_timestamp", pd.NaT), errors="coerce"))
-    report["decision_timestamp"] = report["decision_timestamp"].fillna(pd.Timestamp.utcnow())
+    report["decision_timestamp"] = report["decision_timestamp"].fillna(pd.Timestamp.now("UTC"))
 
     supported_mask = report["competition"].eq("Serie A") & report["decision"].eq("PLAY")
     if "market_support_status" in report.columns:
