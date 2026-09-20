@@ -189,34 +189,38 @@ def test_fetch_fixtures_collects_serie_a_and_premier_league() -> None:
         config = CollectorConfig(db_path=db_path)
         CollectorRepository(config)
         adapter = LiveProviderAdapter(config)
-        adapter.api_football = _FakeApiFootball(
-            {
-                135: [
-                    {
-                        'fixture': {'id': 1, 'date': '2026-08-20T18:45:00Z', 'status': {'short': 'NS'}},
-                        'teams': {'home': {'name': 'Inter'}, 'away': {'name': 'Roma'}},
-                    }
-                ],
-                136: [
-                    {
-                        'fixture': {'id': 2, 'date': '2026-08-21T18:45:00Z', 'status': {'short': 'NS'}},
-                        'teams': {'home': {'name': 'Palermo'}, 'away': {'name': 'Bari'}},
-                    }
-                ],
-                39: [
-                    {
-                        'fixture': {'id': 3, 'date': '2026-08-22T18:45:00Z', 'status': {'short': 'NS'}},
-                        'teams': {'home': {'name': 'Arsenal'}, 'away': {'name': 'Chelsea'}},
-                    }
-                ],
-            }
-        )
+
+        events_by_sport = {
+            'soccer_italy_serie_a': [
+                {
+                    'id': 'evt-serie-a',
+                    'home_team': 'Inter Milan',
+                    'away_team': 'AS Roma',
+                    'commence_time': '2026-08-20T18:45:00Z',
+                }
+            ],
+            'soccer_epl': [
+                {
+                    'id': 'evt-epl',
+                    'home_team': 'Arsenal',
+                    'away_team': 'Chelsea',
+                    'commence_time': '2026-08-22T18:45:00Z',
+                }
+            ],
+        }
+
+        class _FixturesOddsApi(_FakeOddsApi):
+            def list_events(self, sport: str | None = None):
+                return events_by_sport.get(sport, [])
+
+        adapter.the_odds_api = _FixturesOddsApi(events=[], odds_rows=[])
 
         rows = adapter.fetch_fixtures()
 
         assert len(rows) == 2
         assert {row['competition'] for row in rows} == {'Serie A', 'Premier League'}
-
+        assert {row['provider'] for row in rows} == {'the-odds-api'}
+        assert {row['provider_fixture_id'] for row in rows} == {'evt-serie-a', 'evt-epl'}
 
 def test_fetch_odds_uses_epl_sport_key_for_premier_league_fixture() -> None:
     with TemporaryDirectory() as tmpdir:
@@ -274,10 +278,7 @@ def test_fetch_odds_uses_epl_sport_key_for_premier_league_fixture() -> None:
         assert captured['list_sport'] == 'soccer_epl'
         assert captured['odds_sport'] == 'soccer_epl'
 
-def test_fetch_fixtures_requests_ten_upcoming_matches_per_competition(monkeypatch):
-    from src.collector.collector_config import CollectorConfig
-    from src.collector.live_provider_adapter import LiveProviderAdapter
-
+def test_fetch_fixtures_requests_events_for_each_competition(monkeypatch):
     provider = LiveProviderAdapter(CollectorConfig(
         api_football_key="test",
         the_odds_api_key="test",
@@ -285,15 +286,51 @@ def test_fetch_fixtures_requests_ten_upcoming_matches_per_competition(monkeypatc
 
     calls = []
 
-    def fake_request(endpoint, params):
-        calls.append((endpoint, params.copy()))
-        return {"response": []}
+    def fake_list_events(sport=None):
+        calls.append(sport)
+        return []
 
-    monkeypatch.setattr(provider.api_football, "_perform_request", fake_request)
+    monkeypatch.setattr(provider.the_odds_api, "list_events", fake_list_events)
 
     provider.fetch_fixtures()
 
-    assert len(calls) == len(provider.COMPETITIONS)
-    assert all(endpoint == "/fixtures" for endpoint, _ in calls)
-    assert all(params["season"] == 2026 for _, params in calls)
-    assert all(params["next"] == 10 for _, params in calls)
+    assert calls == [item["sport_key"] for item in provider.COMPETITIONS]
+
+def test_fetch_odds_uses_direct_event_id_for_the_odds_api_fixture(monkeypatch) -> None:
+    with TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'collector.sqlite'
+        config = CollectorConfig(db_path=db_path)
+        repo = CollectorRepository(config)
+        repo.upsert_fixture({
+            'provider_fixture_id': 'evt-direct',
+            'competition': 'Serie A',
+            'season': '2026',
+            'kickoff_utc': '2026-09-20T18:45:00Z',
+            'home_team': 'AC Milan',
+            'away_team': 'Lecce',
+            'status': 'NS',
+            'provider': 'the-odds-api',
+        })
+
+        adapter = LiveProviderAdapter(config)
+        adapter.the_odds_api = _FakeOddsApi(
+            events=[],
+            odds_rows=[{
+                'bookmaker': 'BetRivers',
+                'market': 'TOTAL_CORNERS_OVER',
+                'line': '9.5',
+                'side': 'OVER',
+                'closing_odds': 2.0,
+            }],
+        )
+
+        monkeypatch.setattr(
+            adapter,
+            '_match_event_for_fixture',
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("matcher must not run")),
+        )
+
+        rows = adapter.fetch_odds('evt-direct')
+
+        assert rows
+        assert rows[0]['source_fixture_id'] == 'evt-direct'

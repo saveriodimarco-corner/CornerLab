@@ -88,38 +88,35 @@ class LiveProviderAdapter:
     def fetch_fixtures(self) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         resolution_rows: List[Dict[str, Any]] = []
-        for competition in self.COMPETITIONS:
-            league_id = int(competition["league_id"])
-            season = 2026
-            try:
-                payload = self.api_football._perform_request("/fixtures", params={"league": league_id, "season": season, "next": 10})
-            except Exception:
-                payload = {}
+        season = 2026
 
-            fixtures = payload.get("response", []) if isinstance(payload, dict) else []
+        for competition in self.COMPETITIONS:
+            sport_key = str(competition["sport_key"])
+            events = self.the_odds_api.list_events(sport=sport_key)
+
             resolution_rows.append({
                 "competition": competition["name"],
                 "requested_season": season,
-                "fixtures": len(fixtures),
+                "fixtures": len(events),
             })
 
-            for fixture in fixtures:
-                fixture_payload = fixture.get("fixture", {})
-                teams = fixture.get("teams", {}) if isinstance(fixture, dict) else {}
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
                 rows.append({
-                    "provider_fixture_id": str(fixture_payload.get("id") or ""),
+                    "provider_fixture_id": str(event.get("id") or ""),
                     "competition": competition["name"],
-                    "season": str(season or ""),
-                    "kickoff_utc": fixture_payload.get("date"),
-                    "home_team": teams.get("home", {}).get("name"),
-                    "away_team": teams.get("away", {}).get("name"),
-                    "status": fixture_payload.get("status", {}).get("short"),
-                    "provider": "api-football",
+                    "season": str(season),
+                    "kickoff_utc": event.get("commence_time"),
+                    "home_team": event.get("home_team"),
+                    "away_team": event.get("away_team"),
+                    "status": "NS",
+                    "provider": "the-odds-api",
                 })
 
         self.last_resolution = {
             "collector_mode": "LIVE_COLLECTION READY" if rows else "NO FIXTURES AVAILABLE",
-            "provider": "api_football",
+            "provider": "the_odds_api",
             "competitions": resolution_rows,
         }
         return rows
@@ -132,7 +129,11 @@ class LiveProviderAdapter:
             return []
 
         competition = str(fixture.get("competition") or "Serie A")
-        event = self._match_event_for_fixture(fixture, competition=competition)
+        if fixture.get("provider") == "the-odds-api":
+            event = {"id": fixture.get("provider_fixture_id")}
+        else:
+            event = self._match_event_for_fixture(fixture, competition=competition)
+
         if event is None:
             self.last_odds_resolution[fixture_id] = {"match_status": "UNMATCHED", "reason": "event_not_matched"}
             self.logger.warning("MATCH_UNRESOLVED fixture_id=%s home=%s away=%s kickoff=%s", fixture_id, fixture.get("home_team"), fixture.get("away_team"), fixture.get("kickoff_utc"))
@@ -187,7 +188,7 @@ class LiveProviderAdapter:
         try:
             row = conn.execute(
                 """
-                SELECT fixture_id, provider_fixture_id, competition, season, kickoff_utc, home_team, away_team, status
+                SELECT fixture_id, provider_fixture_id, competition, season, kickoff_utc, home_team, away_team, status, provider
                 FROM collector_fixtures
                 WHERE provider_fixture_id = ?
                 """,
