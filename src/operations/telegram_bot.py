@@ -22,6 +22,8 @@ from src.research.decision_engine import minimum_acceptable_odds, recommended_st
 
 _NUMBER_PATTERN = re.compile(r"^-?\d+(\.\d+)?$")
 _PENDING_TTL = timedelta(minutes=30)
+_SIMULATION_CALLBACK_PREFIX = "sim_"
+_SIMULATION_LABEL = "🧪 SIMULAZIONE — NESSUNA SCOMMESSA REALE"
 
 # Forbidden by design: this module never triggers prematch/settlement/retraining,
 # never changes thresholds/staking policy, and never executes shell commands.
@@ -32,21 +34,30 @@ def _authorized(chat_id: Any) -> bool:
 	return bool(configured) and str(chat_id).strip() == configured
 
 
-def build_play_keyboard(bet_id: str) -> dict[str, Any]:
+
+def _simulation_base_dir(base_dir: Path | str) -> Path:
+	return Path(base_dir) / "data" / "telegram_simulation"
+
+
+def _simulation_text(text: str, simulation: bool) -> str:
+	return f"{_SIMULATION_LABEL}\n\n{text}" if simulation else text
+
+
+def build_play_keyboard(bet_id: str, *, simulation: bool = False) -> dict[str, Any]:
 	"""Callback data carries only an opaque bet_id, never monetary or model values."""
+	prefix = _SIMULATION_CALLBACK_PREFIX if simulation else ""
 	return {
 		"inline_keyboard": [
 			[
-				{"text": "✅ Conferma", "callback_data": f"confirm:{bet_id}"},
-				{"text": "❌ Annulla", "callback_data": f"skip:{bet_id}"},
+				{"text": "✅ Conferma", "callback_data": f"{prefix}confirm:{bet_id}"},
+				{"text": "❌ Annulla", "callback_data": f"{prefix}skip:{bet_id}"},
 			],
 			[
-				{"text": "💶 Stake", "callback_data": f"stake:{bet_id}"},
-				{"text": "📈 Quota", "callback_data": f"odds:{bet_id}"},
+				{"text": "💶 Stake", "callback_data": f"{prefix}stake:{bet_id}"},
+				{"text": "📈 Quota", "callback_data": f"{prefix}odds:{bet_id}"},
 			],
 		]
 	}
-
 
 def build_bankroll_keyboard() -> dict[str, Any]:
 	return {"inline_keyboard": [[{"text": "➕ Cash-in", "callback_data": "deposit"}, {"text": "➖ Cash-out", "callback_data": "withdraw"}]]}
@@ -114,6 +125,21 @@ def format_bankroll_message(snapshot: dict[str, float]) -> str:
 	)
 
 
+
+def _send_interaction_message(
+	text: str,
+	*,
+	simulation: bool,
+	request_sender: Callable[[str, bytes, float], None] | None = None,
+	reply_markup: dict[str, Any] | None = None,
+) -> bool:
+	return send_message(
+		_simulation_text(text, simulation),
+		request_sender=request_sender,
+		reply_markup=reply_markup,
+	)
+
+
 def offer_bet_confirmation(base_dir: Path | str, row: dict[str, Any], request_sender: Callable[[str, bytes, float], None] | None = None) -> str:
 	"""Record a SUGGESTED bet and send one interactive confirmation message."""
 	bet_id = real_bet_ledger.record_suggestion(base_dir, row)
@@ -124,6 +150,24 @@ def offer_bet_confirmation(base_dir: Path | str, row: dict[str, Any], request_se
 	)
 	return bet_id if sent else ""
 
+
+
+
+def offer_simulation_confirmation(
+	base_dir: Path | str,
+	row: dict[str, Any],
+	request_sender: Callable[[str, bytes, float], None] | None = None,
+) -> str:
+	"""Send an interactive test suggestion backed only by the isolated simulation ledger."""
+	simulation_base_dir = _simulation_base_dir(base_dir)
+	bet_id = real_bet_ledger.record_suggestion(simulation_base_dir, row)
+	sent = _send_interaction_message(
+		format_suggestion_prompt(row),
+		simulation=True,
+		request_sender=request_sender,
+		reply_markup=build_play_keyboard(bet_id, simulation=True),
+	)
+	return bet_id if sent else ""
 
 
 def offer_fixture_confirmation(
@@ -220,100 +264,151 @@ def _pop_pending(base_dir: Path | str, chat_id: Any) -> dict[str, Any] | None:
 	return entry
 
 
-def _send_result_confirmation(base_dir: Path | str, result: dict[str, Any], request_sender: Callable[[str, bytes, float], None] | None) -> None:
+def _send_result_confirmation(
+	base_dir: Path | str,
+	result: dict[str, Any],
+	request_sender: Callable[[str, bytes, float], None] | None,
+	*,
+	simulation: bool = False,
+) -> None:
 	bet = result.get("bet")
 
 	if result.get("ok") and bet is not None and bet.get("status") == real_bet_ledger.BET_PLACED:
 		snapshot = real_bet_ledger.get_bankroll_snapshot(base_dir)
-		send_message(format_bet_confirmation(bet, snapshot), request_sender=request_sender)
+		_send_interaction_message(
+			format_bet_confirmation(bet, snapshot),
+			simulation=simulation,
+			request_sender=request_sender,
+		)
 		return
 
 	reason = result.get("reason")
 
 	if reason == "actual_odds_required":
-		send_message(
+		_send_interaction_message(
 			"⚠️ Inserisci prima la quota reale che vedi su bet365.it.",
+			simulation=simulation,
 			request_sender=request_sender,
 		)
 		return
 
 	if reason == "odds_below_required_minimum":
 		minimum_odds = float(result.get("minimum_odds", 0.0) or 0.0)
-		send_message(
+		_send_interaction_message(
 			f"⛔ Quota bet365.it insufficiente. Quota minima richiesta: {_display_minimum_odds(minimum_odds):.2f}. "
 			"La giocata non viene confermata.",
+			simulation=simulation,
 			request_sender=request_sender,
 		)
 		return
 
 	if reason == "invalid_stake":
-		send_message(
+		_send_interaction_message(
 			"⛔ Stake non valido. La giocata non viene confermata.",
+			simulation=simulation,
 			request_sender=request_sender,
 		)
 		return
 
 	if reason == "insufficient_available_bankroll":
-		send_message(
+		_send_interaction_message(
 			"⛔ Bankroll disponibile insufficiente per questo stake.",
+			simulation=simulation,
 			request_sender=request_sender,
 		)
 		return
 
 	if reason == "exceeds_stake_cap":
-		send_message(
+		_send_interaction_message(
 			"⛔ Stake superiore al limite operativo del 5% del bankroll disponibile.",
+			simulation=simulation,
 			request_sender=request_sender,
 		)
 
-
-def _resend_suggestion(result: dict[str, Any], request_sender: Callable[[str, bytes, float], None] | None) -> None:
+def _resend_suggestion(
+	result: dict[str, Any],
+	request_sender: Callable[[str, bytes, float], None] | None,
+	*,
+	simulation: bool = False,
+) -> None:
 	"""An edited suggestion stays SUGGESTED, so re-offer it with the same four buttons."""
 	bet = result.get("bet")
 	if result.get("ok") and bet is not None and bet.get("status") == real_bet_ledger.SUGGESTED:
-		send_message(format_pending_suggestion(bet), request_sender=request_sender, reply_markup=build_play_keyboard(bet["bet_id"]))
-
+		_send_interaction_message(
+			format_pending_suggestion(bet),
+			simulation=simulation,
+			request_sender=request_sender,
+			reply_markup=build_play_keyboard(bet["bet_id"], simulation=simulation),
+		)
 
 def handle_callback(base_dir: Path | str, chat_id: Any, callback_data: str, request_sender: Callable[[str, bytes, float], None] | None = None) -> dict[str, Any]:
 	"""Resolve an opaque inline-button callback server-side; unauthorized chats are silently ignored."""
 	if not _authorized(chat_id):
 		return {"ok": False, "reason": "unauthorized"}
 
-	action, _, token = str(callback_data).partition(":")
+	encoded_action, _, token = str(callback_data).partition(":")
+	simulation = encoded_action.startswith(_SIMULATION_CALLBACK_PREFIX)
+	action = encoded_action[len(_SIMULATION_CALLBACK_PREFIX):] if simulation else encoded_action
+	interaction_base_dir = _simulation_base_dir(base_dir) if simulation else base_dir
+	pending_context = {"simulation": True} if simulation else {}
 
 	if action == "deposit":
-		_set_pending(base_dir, chat_id, {"action": "deposit"})
-		send_message("Inserisci l'importo da depositare (>0):", request_sender=request_sender)
+		_set_pending(base_dir, chat_id, {"action": "deposit", **pending_context})
+		_send_interaction_message(
+			"Inserisci l'importo da depositare (>0):",
+			simulation=simulation,
+			request_sender=request_sender,
+		)
 		return {"ok": True, "reason": None}
 	if action == "withdraw":
-		_set_pending(base_dir, chat_id, {"action": "withdraw"})
-		send_message("Inserisci l'importo da prelevare (>0):", request_sender=request_sender)
+		_set_pending(base_dir, chat_id, {"action": "withdraw", **pending_context})
+		_send_interaction_message(
+			"Inserisci l'importo da prelevare (>0):",
+			simulation=simulation,
+			request_sender=request_sender,
+		)
 		return {"ok": True, "reason": None}
 
-	bet = real_bet_ledger.get_bet_by_id(base_dir, token)
+	bet = real_bet_ledger.get_bet_by_id(interaction_base_dir, token)
 	if bet is None:
 		return {"ok": False, "reason": "unknown_bet"}
 	suggestion_id = bet["suggestion_id"]
 
 	if action == "confirm":
-		result = real_bet_ledger.confirm_bet(base_dir, suggestion_id)
-		_send_result_confirmation(base_dir, result, request_sender)
+		result = real_bet_ledger.confirm_bet(interaction_base_dir, suggestion_id)
+		_send_result_confirmation(
+			interaction_base_dir,
+			result,
+			request_sender,
+			simulation=simulation,
+		)
 		return result
 	if action == "skip":
-		result = real_bet_ledger.skip_suggestion(base_dir, suggestion_id)
+		result = real_bet_ledger.skip_suggestion(interaction_base_dir, suggestion_id)
 		if result.get("ok"):
-			send_message("❌ Giocata segnata come non giocata.", request_sender=request_sender)
+			_send_interaction_message(
+				"❌ Giocata segnata come non giocata.",
+				simulation=simulation,
+				request_sender=request_sender,
+			)
 		return result
 	if action == "stake":
-		_set_pending(base_dir, chat_id, {"action": "modify_stake", "bet_id": token})
-		send_message("Inserisci lo stake reale (es. 4.20):", request_sender=request_sender)
+		_set_pending(base_dir, chat_id, {"action": "modify_stake", "bet_id": token, **pending_context})
+		_send_interaction_message(
+			"Inserisci lo stake reale (es. 4.20):",
+			simulation=simulation,
+			request_sender=request_sender,
+		)
 		return {"ok": True, "reason": None}
 	if action == "odds":
-		_set_pending(base_dir, chat_id, {"action": "modify_odds", "bet_id": token})
-		send_message("Inserisci la quota reale (es. 1.92):", request_sender=request_sender)
+		_set_pending(base_dir, chat_id, {"action": "modify_odds", "bet_id": token, **pending_context})
+		_send_interaction_message(
+			"Inserisci la quota reale (es. 1.92):",
+			simulation=simulation,
+			request_sender=request_sender,
+		)
 		return {"ok": True, "reason": None}
 	return {"ok": False, "reason": "unknown_action"}
-
 
 def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender: Callable[[str, bytes, float], None] | None = None) -> dict[str, Any]:
 	"""Handle the narrow /bankroll command and pending numeric replies only; unauthorized chats are ignored."""
@@ -330,6 +425,9 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 	if pending is None:
 		# Arbitrary free text with no pending interaction must never trigger anything.
 		return {"ok": False, "reason": "no_pending_interaction"}
+
+	simulation = pending.get("simulation") is True
+	interaction_base_dir = _simulation_base_dir(base_dir) if simulation else base_dir
 
 	try:
 		created_at = datetime.fromisoformat(str(pending.get("created_at", "")).replace("Z", "+00:00"))
@@ -349,16 +447,16 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 	action = pending.get("action")
 
 	if action == "modify_stake":
-		bet = real_bet_ledger.get_bet_by_id(base_dir, pending.get("bet_id"))
+		bet = real_bet_ledger.get_bet_by_id(interaction_base_dir, pending.get("bet_id"))
 		if bet is None:
 			return {"ok": False, "reason": "unknown_bet"}
-		result = real_bet_ledger.modify_stake(base_dir, bet["suggestion_id"], amount)
-		_resend_suggestion(result, request_sender)
+		result = real_bet_ledger.modify_stake(interaction_base_dir, bet["suggestion_id"], amount)
+		_resend_suggestion(result, request_sender, simulation=simulation)
 		if result.get("ok"):
 			_pop_pending(base_dir, chat_id)
 		return result
 	if action == "modify_odds":
-		bet = real_bet_ledger.get_bet_by_id(base_dir, pending.get("bet_id"))
+		bet = real_bet_ledger.get_bet_by_id(interaction_base_dir, pending.get("bet_id"))
 		if bet is None:
 			return {"ok": False, "reason": "unknown_bet"}
 
@@ -366,9 +464,10 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 		minimum_odds = minimum_acceptable_odds(probability)
 
 		if amount + 1e-9 < minimum_odds:
-			send_message(
+			_send_interaction_message(
 				f"⛔ Quota bet365.it insufficiente. Quota minima richiesta: {_display_minimum_odds(minimum_odds):.2f}. "
 				"Controlla se la quota sale oppure scegli Non giocata.",
+				simulation=simulation,
 				request_sender=request_sender,
 			)
 			return {
@@ -378,7 +477,7 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 				"minimum_odds": minimum_odds,
 			}
 
-		result = real_bet_ledger.modify_odds(base_dir, bet["suggestion_id"], amount)
+		result = real_bet_ledger.modify_odds(interaction_base_dir, bet["suggestion_id"], amount)
 
 		if result.get("ok") and result.get("bet") is not None:
 			updated_bet = result["bet"]
@@ -386,33 +485,41 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 			# Preserve a stake explicitly entered by the user.
 			# Auto-calculate only when no actual stake has been set yet.
 			if updated_bet.get("actual_stake") is None:
-				snapshot = real_bet_ledger.get_bankroll_snapshot(base_dir)
+				snapshot = real_bet_ledger.get_bankroll_snapshot(interaction_base_dir)
 				stake = recommended_stake_for_odds(
 					predicted_probability=probability,
 					odds=amount,
 					bankroll=snapshot["available_bankroll"],
 				)
 				result = real_bet_ledger.modify_stake(
-					base_dir,
+					interaction_base_dir,
 					updated_bet["suggestion_id"],
 					stake,
 				)
 
-		_resend_suggestion(result, request_sender)
+		_resend_suggestion(result, request_sender, simulation=simulation)
 		if result.get("ok"):
 			_pop_pending(base_dir, chat_id)
 		return result
 	if action == "deposit":
-		result = real_bet_ledger.record_deposit(base_dir, amount)
+		result = real_bet_ledger.record_deposit(interaction_base_dir, amount)
 		if result.get("ok"):
 			_pop_pending(base_dir, chat_id)
-			send_message(format_bankroll_message(result["snapshot"]), request_sender=request_sender)
+			_send_interaction_message(
+				format_bankroll_message(result["snapshot"]),
+				simulation=simulation,
+				request_sender=request_sender,
+			)
 		return result
 	if action == "withdraw":
-		result = real_bet_ledger.record_withdrawal(base_dir, amount)
+		result = real_bet_ledger.record_withdrawal(interaction_base_dir, amount)
 		if result.get("ok"):
 			_pop_pending(base_dir, chat_id)
-			send_message(format_bankroll_message(result["snapshot"]), request_sender=request_sender)
+			_send_interaction_message(
+				format_bankroll_message(result["snapshot"]),
+				simulation=simulation,
+				request_sender=request_sender,
+			)
 		return result
 	return {"ok": False, "reason": "unknown_pending_action"}
 

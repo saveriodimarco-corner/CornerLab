@@ -267,3 +267,6 @@ data/paper_trading/run_history.jsonl
 /reports/paper_trading_current.csv
 /reports/paper_trading_summary.md
 /reports/prematch_latest.json
+
+# CornerLab isolated Telegram simulation runtime
+/data/telegram_simulation/

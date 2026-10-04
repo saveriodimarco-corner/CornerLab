@@ -463,3 +463,105 @@ def test_successful_withdrawal_clears_pending_before_notification_failure(
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 	assert snapshot["total_bankroll"] == 90.0
 	assert "999" not in telegram_bot._read_pending_state(tmp_path)
+
+def test_simulation_odds_and_confirmation_use_only_isolated_ledger(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+	payloads: list[bytes] = []
+
+	bet_id = telegram_bot.offer_simulation_confirmation(
+		tmp_path,
+		_play_row(fixture_id=901),
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	simulation_base = telegram_bot._simulation_base_dir(tmp_path)
+
+	assert real_bet_ledger.get_bet_by_id(tmp_path, bet_id) is None
+	assert real_bet_ledger.get_bet_by_id(simulation_base, bet_id)["status"] == real_bet_ledger.SUGGESTED
+	assert "SIMULAZIONE" in _sent_text(payloads)
+	assert f"sim_odds:{bet_id}" in _sent_text(payloads)
+
+	telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"sim_odds:{bet_id}",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	edited = telegram_bot.handle_message(
+		tmp_path,
+		"999",
+		"2.05",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+
+	assert edited["ok"] is True
+	assert edited["bet"]["actual_odds"] == 2.05
+	assert f"sim_confirm:{bet_id}" in _sent_text(payloads)
+	assert "SIMULAZIONE" in _sent_text(payloads)
+
+	confirmed = telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"sim_confirm:{bet_id}",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	simulation_snapshot = real_bet_ledger.get_bankroll_snapshot(simulation_base)
+	real_snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert confirmed["ok"] is True
+	assert confirmed["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert simulation_snapshot["open_exposure"] > 0.0
+	assert simulation_snapshot["total_bankroll"] == 100.0
+	assert real_snapshot["open_exposure"] == 0.0
+	assert real_snapshot["total_bankroll"] == 100.0
+	assert "SIMULAZIONE" in _sent_text(payloads[-1:])
+
+
+def test_simulation_stake_and_skip_use_only_isolated_ledger(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+	payloads: list[bytes] = []
+
+	bet_id = telegram_bot.offer_simulation_confirmation(
+		tmp_path,
+		_play_row(fixture_id=902),
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	simulation_base = telegram_bot._simulation_base_dir(tmp_path)
+
+	telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"sim_stake:{bet_id}",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	edited = telegram_bot.handle_message(
+		tmp_path,
+		"999",
+		"3.50",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+	skipped = telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"sim_skip:{bet_id}",
+		request_sender=lambda _, payload, __: payloads.append(payload),
+	)
+
+	simulation_snapshot = real_bet_ledger.get_bankroll_snapshot(simulation_base)
+	real_snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
+
+	assert edited["ok"] is True
+	assert edited["bet"]["actual_stake"] == 3.50
+	assert f"sim_skip:{bet_id}" in _sent_text(payloads)
+	assert skipped["ok"] is True
+	assert skipped["bet"]["status"] == real_bet_ledger.SKIPPED
+	assert simulation_snapshot["open_exposure"] == 0.0
+	assert simulation_snapshot["total_bankroll"] == 100.0
+	assert real_snapshot["open_exposure"] == 0.0
+	assert real_snapshot["total_bankroll"] == 100.0
+	assert "SIMULAZIONE" in _sent_text(payloads[-1:])
