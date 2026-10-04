@@ -410,6 +410,8 @@ def test_varied_slate_produces_multiple_tiers() -> None:
 
 def test_current_report_play_rows_do_not_collapse_to_one_tier() -> None:
     report_path = Path("reports/paper_trading_current.csv")
+    if not report_path.exists():
+        pytest.skip("Current live report is runtime state and is not available.")
     frame = pd.read_csv(report_path)
     quality = _add_play_quality(frame)
     play_quality = quality.loc[quality["decision"] == "PLAY", "Qualità"]

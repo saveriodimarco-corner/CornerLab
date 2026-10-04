@@ -261,3 +261,9 @@ data/collector.sqlite
 
 # CornerLab generated paper-trading history
 data/paper_trading/run_history.jsonl
+
+# CornerLab generated report runtime state
+/reports/advanced_feature_validation.md
+/reports/paper_trading_current.csv
+/reports/paper_trading_summary.md
+/reports/prematch_latest.json
