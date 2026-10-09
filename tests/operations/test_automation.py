@@ -1658,3 +1658,161 @@ def test_daily_summary_contains_real_daily_and_general_stats(
     assert "Giocate chiuse: 1" in message
     assert "Win rate: 100.0%" in message
     assert "P/L realizzato: €+5.00" in message
+
+
+def test_offer_bet_confirmations_sends_non_actionable_block_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pandas as pd
+
+    report = pd.DataFrame(
+        [
+            {
+                "fixture_id": 41,
+                "competition": "Serie A",
+                "market": "TOTAL_CORNERS_UNDER",
+                "side": "UNDER",
+                "line": "10.5",
+                "home_team": "Genoa",
+                "away_team": "Fiorentina",
+                "predicted_probability": 0.40,
+                "confidence_score": 70.0,
+                "decision": "NO BET",
+                "decision_reason": "PROBABILITY_BELOW_THRESHOLD",
+                "kickoff_utc": "2026-08-31T18:45:00Z",
+                "target_name": "under_10_5",
+            },
+        ]
+    )
+
+    real_datetime = automation.datetime
+
+    class FixedDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime(
+                2026, 8, 31, 12, 45,
+                tzinfo=automation.timezone.utc,
+            )
+
+    monkeypatch.setattr(automation, "datetime", FixedDateTime)
+
+    messages: list[str] = []
+    monkeypatch.setattr(
+        automation,
+        "send_message",
+        lambda message: messages.append(message) or True,
+    )
+    monkeypatch.setattr(
+        automation,
+        "telegram_bot",
+        type(
+            "FakeTelegram",
+            (),
+            {
+                "offer_block_confirmation": staticmethod(
+                    lambda *_: (_ for _ in ()).throw(
+                        AssertionError(
+                            "una giocata non idonea non deve avere pulsanti"
+                        )
+                    )
+                ),
+            },
+        ),
+    )
+
+    first = automation._offer_bet_confirmations(tmp_path, report)
+    second = automation._offer_bet_confirmations(tmp_path, report)
+
+    assert first == 1
+    assert second == 0
+    assert len(messages) == 1
+    assert "NON GIOCARE" in messages[0]
+    assert "Genoa vs Fiorentina" in messages[0]
+
+
+def test_offer_bet_confirmations_sends_mixed_blocks_at_first_kickoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pandas as pd
+
+    report = pd.DataFrame(
+        [
+            {
+                "fixture_id": 51,
+                "competition": "Serie A",
+                "market": "TOTAL_CORNERS_UNDER",
+                "side": "UNDER",
+                "line": "10.5",
+                "home_team": "Lecce",
+                "away_team": "Roma",
+                "predicted_probability": 0.40,
+                "confidence_score": 70.0,
+                "decision": "NO BET",
+                "decision_reason": "PROBABILITY_BELOW_THRESHOLD",
+                "kickoff_utc": "2026-08-31T16:30:00Z",
+                "target_name": "under_10_5",
+            },
+            {
+                "fixture_id": 52,
+                "competition": "Serie A",
+                "market": "TOTAL_CORNERS_OVER",
+                "side": "OVER",
+                "line": "9.5",
+                "home_team": "Inter",
+                "away_team": "Napoli",
+                "predicted_probability": 0.75,
+                "confidence_score": 70.0,
+                "decision": "PLAY",
+                "decision_reason": "",
+                "kickoff_utc": "2026-08-31T18:45:00Z",
+                "target_name": "over_9_5",
+            },
+        ]
+    )
+
+    real_datetime = automation.datetime
+
+    class FixedDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime(
+                2026, 8, 31, 10, 30,
+                tzinfo=automation.timezone.utc,
+            )
+
+    monkeypatch.setattr(automation, "datetime", FixedDateTime)
+
+    interactive_calls: list[list[dict]] = []
+    messages: list[str] = []
+
+    monkeypatch.setattr(
+        automation,
+        "send_message",
+        lambda message: messages.append(message) or True,
+    )
+    monkeypatch.setattr(
+        automation,
+        "telegram_bot",
+        type(
+            "FakeTelegram",
+            (),
+            {
+                "offer_block_confirmation": staticmethod(
+                    lambda base_dir, rows:
+                    interactive_calls.append(rows) or ["bet-52"]
+                ),
+            },
+        ),
+    )
+
+    sent = automation._offer_bet_confirmations(tmp_path, report)
+
+    assert sent == 2
+    assert len(interactive_calls) == 1
+    assert interactive_calls[0][0]["fixture_id"] == 52
+    assert len(messages) == 1
+    assert "Lecce vs Roma" in messages[0]
+    assert "NON GIOCARE" in messages[0]

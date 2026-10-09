@@ -258,78 +258,98 @@ def _offer_bet_confirmations(base_dir: Path, report: "pd.DataFrame") -> int:
     from src.operations.telegram_notifier import (
         _notified_keys,
         _record_notification,
+        format_non_actionable_block,
         select_actionable_plays,
+        select_non_actionable_fixtures,
     )
 
     now = datetime.now(timezone.utc)
     rome = ZoneInfo("Europe/Rome")
 
-    # Un blocco per giornata calcistica italiana.
-    blocks: dict[str, list[dict[str, Any]]] = {}
+    actionable_blocks: dict[str, list[dict[str, Any]]] = {}
+    non_actionable_blocks: dict[str, list[dict[str, Any]]] = {}
 
-    for row_dict in select_actionable_plays(report, now=now):
-        kickoff_raw = row_dict.get("kickoff_utc")
+    def parse_kickoff(row: dict[str, Any]) -> datetime | None:
         try:
             kickoff = datetime.fromisoformat(
-                str(kickoff_raw).replace("Z", "+00:00")
+                str(row.get("kickoff_utc")).replace("Z", "+00:00")
             )
         except (TypeError, ValueError):
-            continue
+            return None
 
         if kickoff.tzinfo is None:
-            kickoff = kickoff.replace(tzinfo=timezone.utc)
-        else:
-            kickoff = kickoff.astimezone(timezone.utc)
+            return kickoff.replace(tzinfo=timezone.utc)
+        return kickoff.astimezone(timezone.utc)
 
-        block_date = kickoff.astimezone(rome).date().isoformat()
-        blocks.setdefault(block_date, []).append(row_dict)
+    def group_by_matchday(
+        rows: list[dict[str, Any]],
+        blocks: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        for row in rows:
+            kickoff = parse_kickoff(row)
+            if kickoff is None:
+                continue
+            block_date = kickoff.astimezone(rome).date().isoformat()
+            blocks.setdefault(block_date, []).append(row)
+
+    group_by_matchday(
+        select_actionable_plays(report, now=now),
+        actionable_blocks,
+    )
+    group_by_matchday(
+        select_non_actionable_fixtures(report, now=now),
+        non_actionable_blocks,
+    )
 
     notified = _notified_keys(base_dir)
     sent = 0
+    block_dates = sorted(
+        set(actionable_blocks) | set(non_actionable_blocks)
+    )
 
-    for block_date, rows in sorted(blocks.items()):
-        kickoffs = []
-
-        for row in rows:
-            try:
-                kickoff = datetime.fromisoformat(
-                    str(row.get("kickoff_utc")).replace("Z", "+00:00")
-                )
-            except (TypeError, ValueError):
-                continue
-
-            if kickoff.tzinfo is None:
-                kickoff = kickoff.replace(tzinfo=timezone.utc)
-            else:
-                kickoff = kickoff.astimezone(timezone.utc)
-
-            kickoffs.append(kickoff)
+    for block_date in block_dates:
+        actionable_rows = actionable_blocks.get(block_date, [])
+        non_actionable_rows = non_actionable_blocks.get(block_date, [])
+        kickoffs = [
+            kickoff
+            for row in actionable_rows + non_actionable_rows
+            if (kickoff := parse_kickoff(row)) is not None
+        ]
 
         if not kickoffs:
             continue
 
-        first_kickoff = min(kickoffs)
-
-        # L'intero blocco viene notificato sei ore prima
-        # della prima partita della giornata.
-        if not _six_hour_alert_due(first_kickoff, now):
+        # Entrambi i messaggi della giornata partono sei ore prima
+        # della prima partita, anche quando nessuna giocata è idonea.
+        if not _six_hour_alert_due(min(kickoffs), now):
             continue
 
-        key = f"block:{block_date}"
-        if key in notified:
-            continue
+        interactive_key = f"block:{block_date}"
+        if actionable_rows and interactive_key not in notified:
+            bet_ids = telegram_bot.offer_block_confirmation(
+                base_dir,
+                actionable_rows,
+            )
+            if bet_ids:
+                _record_notification(
+                    base_dir,
+                    interactive_key,
+                    "INTERACTIVE_MODEL_CANDIDATE_BLOCK",
+                )
+                notified.add(interactive_key)
+                sent += 1
 
-        bet_ids = telegram_bot.offer_block_confirmation(base_dir, rows)
-        if not bet_ids:
-            continue
-
-        _record_notification(
-            base_dir,
-            key,
-            "INTERACTIVE_MODEL_CANDIDATE_BLOCK",
-        )
-        notified.add(key)
-        sent += 1
+        non_actionable_key = f"block:{block_date}:non_actionable"
+        if non_actionable_rows and non_actionable_key not in notified:
+            message = format_non_actionable_block(non_actionable_rows)
+            if message and send_message(message):
+                _record_notification(
+                    base_dir,
+                    non_actionable_key,
+                    "INFORMATIONAL_NON_ACTIONABLE_BLOCK",
+                )
+                notified.add(non_actionable_key)
+                sent += 1
 
     return sent
 

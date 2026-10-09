@@ -356,3 +356,42 @@ def test_settlement_job_sends_no_hourly_recap_and_checks_daily_summary(
 	assert payload["outcome"] == "SUCCESS"
 	assert sent == []
 	assert len(daily_calls) == 1
+
+
+def test_select_non_actionable_fixtures_excludes_actionable_matches() -> None:
+    now = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    rows = [
+        _play_row(1, "OVER", "9.5") | {
+            "kickoff_utc": "2026-08-31T18:45:00Z",
+        },
+        _play_row(2, "UNDER", "10.5") | {
+            "decision": "NO BET",
+            "decision_reason": "PROBABILITY_BELOW_THRESHOLD",
+            "predicted_probability": 0.40,
+            "kickoff_utc": "2026-08-31T18:45:00Z",
+        },
+        _play_row(3, "OVER", "11.5") | {
+            "decision": "MODEL_UNAVAILABLE",
+            "decision_reason": "NO_ACCEPTED_MODEL",
+            "predicted_probability": None,
+            "confidence_score": None,
+            "kickoff_utc": "2026-09-01T18:45:00Z",
+        },
+    ]
+
+    selected = telegram_notifier.select_non_actionable_fixtures(
+        pd.DataFrame(rows),
+        now=now,
+    )
+
+    assert {row["fixture_id"] for row in selected} == {2, 3}
+
+    message = telegram_notifier.format_non_actionable_block(selected)
+
+    assert "🚫 CORNERLAB — NON GIOCARE" in message
+    assert "Home2 vs Away2" in message
+    assert "Home3 vs Away3" in message
+    assert "probabilità del modello sotto la soglia minima" in message
+    assert "nessun modello validato disponibile" in message
+    assert "Esito: NON GIOCARE" in message
+    assert "callback_data" not in message

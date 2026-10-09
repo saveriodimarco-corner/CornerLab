@@ -219,6 +219,195 @@ def select_actionable_plays(
     return selected
 
 
+def _fixture_identity(item: dict[str, Any]) -> tuple[str, ...]:
+    fixture_id = str(item.get("fixture_id", "")).strip()
+    if fixture_id and fixture_id.lower() not in {"nan", "none"}:
+        return ("fixture_id", fixture_id)
+    return (
+        "fixture",
+        str(item.get("kickoff_utc", "")),
+        str(item.get("home_team", "")),
+        str(item.get("away_team", "")),
+    )
+
+
+def _numeric_value(item: dict[str, Any], *names: str) -> float | None:
+    for name in names:
+        try:
+            value = float(item.get(name))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(value):
+            return value
+    return None
+
+
+def select_non_actionable_fixtures(
+    report: pd.DataFrame,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return one representative NON GIOCARE row for each rejected fixture."""
+    if report.empty:
+        return []
+
+    now_utc = pd.Timestamp(now or datetime.now(timezone.utc))
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.tz_localize("UTC")
+    else:
+        now_utc = now_utc.tz_convert("UTC")
+
+    rome = ZoneInfo("Europe/Rome")
+    today_rome = now_utc.to_pydatetime().astimezone(rome).date()
+    tomorrow_rome = today_rome + timedelta(days=1)
+
+    fixture_rows: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+
+    for _, row in report.iterrows():
+        item = row.to_dict()
+
+        if str(item.get("competition", "")) != "Serie A":
+            continue
+
+        kickoff = pd.to_datetime(
+            item.get("kickoff_utc"),
+            utc=True,
+            errors="coerce",
+        )
+        if pd.isna(kickoff) or kickoff <= now_utc:
+            continue
+
+        kickoff_date_rome = kickoff.to_pydatetime().astimezone(rome).date()
+        if kickoff_date_rome not in {today_rome, tomorrow_rome}:
+            continue
+
+        fixture_rows.setdefault(_fixture_identity(item), []).append(item)
+
+    selected: list[dict[str, Any]] = []
+
+    for rows in fixture_rows.values():
+        has_actionable_candidate = any(
+            str(item.get("target_name", "")) in SUPPORTED_TARGETS
+            and is_model_candidate(item)
+            for item in rows
+        )
+        if has_actionable_candidate:
+            continue
+
+        def representative_rank(item: dict[str, Any]) -> tuple[Any, ...]:
+            reason = str(item.get("decision_reason", "")).strip().upper()
+            probability = _numeric_value(item, "predicted_probability")
+            confidence = _numeric_value(
+                item,
+                "confidence_score",
+                "model_confidence",
+                "confidence",
+            )
+            return (
+                str(item.get("target_name", "")) in SUPPORTED_TARGETS,
+                reason not in {"NO_ACCEPTED_MODEL", "MODEL_UNAVAILABLE"},
+                reason != "ALREADY_PAPER_TRADED",
+                probability if probability is not None else float("-inf"),
+                confidence if confidence is not None else float("-inf"),
+            )
+
+        selected.append(max(rows, key=representative_rank))
+
+    selected.sort(
+        key=lambda item: pd.to_datetime(
+            item.get("kickoff_utc"),
+            utc=True,
+            errors="coerce",
+        )
+    )
+    return selected
+
+
+def _non_actionable_reason(row: dict[str, Any]) -> str:
+    reason = str(row.get("decision_reason", "")).strip().upper()
+    probability = _numeric_value(row, "predicted_probability")
+    confidence = _numeric_value(
+        row,
+        "confidence_score",
+        "model_confidence",
+        "confidence",
+    )
+
+    if reason in {"NO_ACCEPTED_MODEL", "MODEL_UNAVAILABLE"}:
+        return "nessun modello validato disponibile"
+    if probability is None:
+        return "probabilità del modello non disponibile"
+    if probability < MIN_PREDICTED_PROBABILITY:
+        return (
+            "probabilità del modello sotto la soglia minima "
+            f"({MIN_PREDICTED_PROBABILITY:.0%})"
+        )
+    if confidence is None:
+        return "confidenza del modello non disponibile"
+    if confidence < MIN_CONFIDENCE_SCORE:
+        return (
+            "confidenza del modello sotto la soglia minima "
+            f"({MIN_CONFIDENCE_SCORE:.1f})"
+        )
+    if reason == "INSUFFICIENT_HISTORY":
+        return "storico insufficiente"
+    if reason == "ALREADY_PAPER_TRADED":
+        return "valutazione già registrata"
+    if reason:
+        return reason.replace("_", " ").lower()
+    return "requisiti minimi CornerLab non soddisfatti"
+
+
+def format_non_actionable_block(rows: list[dict[str, Any]]) -> str:
+    """Format an informational block without betting controls."""
+    lines = [
+        "🚫 CORNERLAB — NON GIOCARE",
+        "",
+        "Le seguenti giocate non rispettano i requisiti minimi.",
+    ]
+    rome = ZoneInfo("Europe/Rome")
+
+    for row in rows:
+        fixture = (
+            f"{row.get('home_team', '-')} vs "
+            f"{row.get('away_team', '-')}"
+        )
+        kickoff = pd.to_datetime(
+            row.get("kickoff_utc"),
+            utc=True,
+            errors="coerce",
+        )
+
+        lines.extend(["", fixture])
+        if not pd.isna(kickoff):
+            kickoff_rome = kickoff.to_pydatetime().astimezone(rome)
+            lines.append(
+                f"Kickoff: {kickoff_rome.strftime('%d/%m/%Y %H:%M')}"
+            )
+
+        side = str(row.get("side", "")).strip().upper()
+        line = str(row.get("line", "")).strip()
+        if side and line and line.lower() != "nan":
+            lines.append(f"Giocata valutata: {side} {line}")
+
+        probability = _numeric_value(row, "predicted_probability")
+        if probability is not None:
+            lines.append(f"Probabilità modello: {probability:.1%}")
+
+        confidence = _numeric_value(
+            row,
+            "confidence_score",
+            "model_confidence",
+            "confidence",
+        )
+        if confidence is not None:
+            lines.append(f"Confidenza modello: {confidence:.1f}")
+
+        lines.append(f"Motivo: {_non_actionable_reason(row)}")
+        lines.append("Esito: NON GIOCARE")
+
+    return "\n".join(lines)
+
+
 def _history_path(base_dir: Path) -> Path:
 	return base_dir / "data" / "operations" / "telegram_notifications.jsonl"
 
