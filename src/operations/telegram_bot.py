@@ -24,6 +24,8 @@ _NUMBER_PATTERN = re.compile(r"^-?\d+(\.\d+)?$")
 _PENDING_TTL = timedelta(minutes=30)
 _SIMULATION_CALLBACK_PREFIX = "sim_"
 _SIMULATION_LABEL = "🧪 SIMULAZIONE — NESSUNA SCOMMESSA REALE"
+_DEFAULT_REAL_STAKE = 10.0
+_MINIMUM_REAL_STAKE = 10.0
 
 # Forbidden by design: this module never triggers prematch/settlement/retraining,
 # never changes thresholds/staking policy, and never executes shell commands.
@@ -78,7 +80,11 @@ def format_suggestion_prompt(row: dict[str, Any]) -> str:
 	)
 
 
-def format_pending_suggestion(bet: dict[str, Any]) -> str:
+def format_pending_suggestion(
+	bet: dict[str, Any],
+	*,
+	simulation: bool = False,
+) -> str:
 	"""Render only real bet365 values entered or derived after actual odds are known."""
 	fixture = f"{bet.get('home_team', '-')} vs {bet.get('away_team', '-')}"
 	market = f"{str(bet.get('side', '')).upper()} {bet.get('line', '')} corner"
@@ -95,8 +101,38 @@ def format_pending_suggestion(bet: dict[str, Any]) -> str:
 
 	if actual_odds is not None:
 		lines.append(f"Quota attuale: {float(actual_odds):.2f}")
+
+	suggested_stake = bet.get("suggested_stake")
+	if (
+		not simulation
+		and suggested_stake is not None
+		and float(suggested_stake) > 0.0
+	):
+		lines.append(
+			"Stake consigliato dal modello "
+			f"(entro il 5%): €{float(suggested_stake):.2f}"
+		)
+
 	if actual_stake is not None:
-		lines.append(f"Stake attuale: €{float(actual_stake):.2f}")
+		lines.append(f"Stake reale: €{float(actual_stake):.2f}")
+
+	if (
+		not simulation
+		and actual_stake is not None
+		and suggested_stake is not None
+		and float(suggested_stake) > 0.0
+		and float(actual_stake)
+		> float(suggested_stake) + 1e-9
+	):
+		lines.extend(
+			[
+				"",
+				"⚠️ Lo stake reale supera la "
+				"raccomandazione prudenziale del modello.",
+				"Il superamento è consentito: verifica "
+				"consapevolmente prima di confermare.",
+			]
+		)
 
 	lines.append(f"Qualità: {bet.get('quality_tier', '-')}")
 	return "\n".join(lines)
@@ -318,12 +354,6 @@ def _send_result_confirmation(
 		)
 		return
 
-	if reason == "exceeds_stake_cap":
-		_send_interaction_message(
-			"⛔ Stake superiore al limite operativo del 5% del bankroll disponibile.",
-			simulation=simulation,
-			request_sender=request_sender,
-		)
 
 def _resend_suggestion(
 	result: dict[str, Any],
@@ -335,7 +365,10 @@ def _resend_suggestion(
 	bet = result.get("bet")
 	if result.get("ok") and bet is not None and bet.get("status") == real_bet_ledger.SUGGESTED:
 		_send_interaction_message(
-			format_pending_suggestion(bet),
+			format_pending_suggestion(
+				bet,
+				simulation=simulation,
+			),
 			simulation=simulation,
 			request_sender=request_sender,
 			reply_markup=build_play_keyboard(bet["bet_id"], simulation=simulation),
@@ -394,8 +427,19 @@ def handle_callback(base_dir: Path | str, chat_id: Any, callback_data: str, requ
 		return result
 	if action == "stake":
 		_set_pending(base_dir, chat_id, {"action": "modify_stake", "bet_id": token, **pending_context})
+		stake_prompt = (
+			"Inserisci lo stake della simulazione "
+			"(es. 4.20):"
+			if simulation
+			else (
+				"Inserisci lo stake reale "
+				"(minimo €10.00). Il 5% è una "
+				"raccomandazione prudenziale, "
+				"non un blocco:"
+			)
+		)
 		_send_interaction_message(
-			"Inserisci lo stake reale (es. 4.20):",
+			stake_prompt,
 			simulation=simulation,
 			request_sender=request_sender,
 		)
@@ -447,6 +491,22 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 	action = pending.get("action")
 
 	if action == "modify_stake":
+		if (
+			not simulation
+			and amount + 1e-9 < _MINIMUM_REAL_STAKE
+		):
+			_send_interaction_message(
+				"⛔ La puntata reale minima è €10.00. "
+				"Inserisci un importo uguale o superiore.",
+				simulation=False,
+				request_sender=request_sender,
+			)
+			return {
+				"ok": False,
+				"reason": "stake_below_minimum",
+				"minimum_stake": _MINIMUM_REAL_STAKE,
+			}
+
 		bet = real_bet_ledger.get_bet_by_id(interaction_base_dir, pending.get("bet_id"))
 		if bet is None:
 			return {"ok": False, "reason": "unknown_bet"}
@@ -485,12 +545,22 @@ def handle_message(base_dir: Path | str, chat_id: Any, text: str, request_sender
 			# Preserve a stake explicitly entered by the user.
 			# Auto-calculate only when no actual stake has been set yet.
 			if updated_bet.get("actual_stake") is None:
-				snapshot = real_bet_ledger.get_bankroll_snapshot(interaction_base_dir)
-				stake = recommended_stake_for_odds(
-					predicted_probability=probability,
-					odds=amount,
-					bankroll=snapshot["available_bankroll"],
-				)
+				if simulation:
+					snapshot = (
+						real_bet_ledger.get_bankroll_snapshot(
+							interaction_base_dir
+						)
+					)
+					stake = recommended_stake_for_odds(
+						predicted_probability=probability,
+						odds=amount,
+						bankroll=snapshot[
+							"available_bankroll"
+						],
+					)
+				else:
+					stake = _DEFAULT_REAL_STAKE
+
 				result = real_bet_ledger.modify_stake(
 					interaction_base_dir,
 					updated_bet["suggestion_id"],

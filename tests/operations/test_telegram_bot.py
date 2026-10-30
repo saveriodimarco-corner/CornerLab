@@ -43,6 +43,8 @@ def test_offer_and_confirm_via_callback_places_bet(tmp_path: Path, monkeypatch: 
 
 	assert result["ok"] is True
 	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
+	assert result["bet"]["actual_stake"] == 10.0
+	assert result["stake_above_advisory_limit"] is True
 	assert len(messages) == 2
 
 
@@ -68,18 +70,61 @@ def test_modify_stake_via_callback_then_message_persists_actual_stake(tmp_path: 
 
 	telegram_bot.handle_callback(tmp_path, "999", f"stake:{bet_id}", request_sender=lambda *_: None)
 	payloads: list[bytes] = []
-	result = telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda _, payload, __: payloads.append(payload))
+	result = telegram_bot.handle_message(tmp_path, "999", "12.50", request_sender=lambda _, payload, __: payloads.append(payload))
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 	sent = _sent_text(payloads)
 
 	assert result["ok"] is True
-	assert result["bet"]["actual_stake"] == 3.50
+	assert result["bet"]["actual_stake"] == 12.50
 	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
 	assert snapshot["open_exposure"] == 0.0
 	assert "CONFERMA GIOCATA" in sent
-	assert "Stake attuale: €3.50" in sent
+	assert "Stake reale: €12.50" in sent
+	assert "Stake consigliato dal modello" in sent
+	assert "supera la raccomandazione" in sent
 	assert "GIOCATA REGISTRATA" not in sent
 	assert f"confirm:{bet_id}" in sent
+
+
+def test_real_stake_below_ten_is_rejected_and_keeps_pending(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	_configure(monkeypatch)
+	bet_id = telegram_bot.offer_bet_confirmation(
+		tmp_path,
+		_play_row(),
+		request_sender=lambda *_: None,
+	)
+
+	telegram_bot.handle_callback(
+		tmp_path,
+		"999",
+		f"stake:{bet_id}",
+		request_sender=lambda *_: None,
+	)
+	payloads: list[bytes] = []
+	result = telegram_bot.handle_message(
+		tmp_path,
+		"999",
+		"9.99",
+		request_sender=lambda _, payload, __: (
+			payloads.append(payload)
+		),
+	)
+	bet = real_bet_ledger.get_bet_by_id(
+		tmp_path,
+		bet_id,
+	)
+	pending = telegram_bot._read_pending_state(tmp_path)
+	sent = _sent_text(payloads)
+
+	assert result["ok"] is False
+	assert result["reason"] == "stake_below_minimum"
+	assert result["minimum_stake"] == 10.0
+	assert bet["actual_stake"] is None
+	assert pending["999"]["action"] == "modify_stake"
+	assert "puntata reale minima è €10.00" in sent
 
 
 def test_pending_suggestion_never_displays_external_suggested_odds_as_current() -> None:
@@ -113,9 +158,12 @@ def test_modify_odds_via_callback_then_message_persists_actual_odds(tmp_path: Pa
 
 	assert result["ok"] is True
 	assert result["bet"]["actual_odds"] == 2.05
+	assert result["bet"]["actual_stake"] == 10.0
 	assert result["bet"]["status"] == real_bet_ledger.SUGGESTED
 	assert snapshot["open_exposure"] == 0.0
 	assert "Quota attuale: 2.05" in sent
+	assert "Stake reale: €10.00" in sent
+	assert "supera la raccomandazione" in sent
 	assert "GIOCATA REGISTRATA" not in sent
 	assert f"skip:{bet_id}" in sent
 
@@ -125,7 +173,7 @@ def test_edited_suggestion_confirms_with_edited_values(tmp_path: Path, monkeypat
 	bet_id = telegram_bot.offer_bet_confirmation(tmp_path, _play_row(), request_sender=lambda *_: None)
 
 	telegram_bot.handle_callback(tmp_path, "999", f"stake:{bet_id}", request_sender=lambda *_: None)
-	telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda *_: None)
+	telegram_bot.handle_message(tmp_path, "999", "12.50", request_sender=lambda *_: None)
 	telegram_bot.handle_callback(tmp_path, "999", f"odds:{bet_id}", request_sender=lambda *_: None)
 	telegram_bot.handle_message(tmp_path, "999", "2.10", request_sender=lambda *_: None)
 
@@ -134,9 +182,9 @@ def test_edited_suggestion_confirms_with_edited_values(tmp_path: Path, monkeypat
 	snapshot = real_bet_ledger.get_bankroll_snapshot(tmp_path)
 
 	assert result["bet"]["status"] == real_bet_ledger.BET_PLACED
-	assert result["bet"]["actual_stake"] == 3.50
+	assert result["bet"]["actual_stake"] == 12.50
 	assert result["bet"]["actual_odds"] == 2.10
-	assert snapshot["open_exposure"] == 3.50
+	assert snapshot["open_exposure"] == 12.50
 	assert "GIOCATA REGISTRATA" in _sent_text(payloads)
 
 
@@ -163,7 +211,7 @@ def test_duplicate_confirm_callback_is_idempotent(tmp_path: Path, monkeypatch: p
 
 	assert first["ok"] is True
 	assert second["reason"] == "already_processed"
-	assert snapshot["open_exposure"] == 5.0
+	assert snapshot["open_exposure"] == 10.0
 
 
 def test_unauthorized_chat_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,7 +446,7 @@ def test_pending_state_survives_action_exception(tmp_path: Path, monkeypatch: py
 	monkeypatch.setattr(real_bet_ledger, "modify_stake", fail_modify)
 
 	with pytest.raises(RuntimeError, match="simulated failure"):
-		telegram_bot.handle_message(tmp_path, "999", "3.50", request_sender=lambda *_: None)
+		telegram_bot.handle_message(tmp_path, "999", "12.50", request_sender=lambda *_: None)
 
 	pending = telegram_bot._read_pending_state(tmp_path)
 	assert pending["999"]["action"] == "modify_stake"

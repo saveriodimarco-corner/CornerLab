@@ -262,20 +262,53 @@ def test_open_exposure_reduces_available_bankroll(tmp_path: Path) -> None:
 	assert snapshot["available_bankroll"] == 95.0
 
 
-def test_stake_cap_applies_to_available_bankroll_not_total(tmp_path: Path) -> None:
-	first_row = _play_row(fixture_id=1, recommended_stake=15.0)
-	real_bet_ledger.record_suggestion(tmp_path, first_row)
-	real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(first_row), actual_stake=15.0, actual_odds=2.05)
+def test_stake_above_advisory_limit_is_allowed(
+	tmp_path: Path,
+) -> None:
+	first_row = _play_row(
+		fixture_id=1,
+		recommended_stake=15.0,
+	)
+	real_bet_ledger.record_suggestion(
+		tmp_path,
+		first_row,
+	)
+	first = real_bet_ledger.confirm_bet(
+		tmp_path,
+		real_bet_ledger.suggestion_key(first_row),
+		actual_stake=15.0,
+		actual_odds=2.05,
+	)
 
-	second_row = _play_row(fixture_id=2, recommended_stake=10.0)
-	real_bet_ledger.record_suggestion(tmp_path, second_row)
-	rejected = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=10.0, actual_odds=2.05)
-	accepted = real_bet_ledger.confirm_bet(tmp_path, real_bet_ledger.suggestion_key(second_row), actual_stake=85.0 * MAX_STAKE_FRACTION, actual_odds=2.05)
+	second_row = _play_row(
+		fixture_id=2,
+		recommended_stake=10.0,
+	)
+	real_bet_ledger.record_suggestion(
+		tmp_path,
+		second_row,
+	)
+	second = real_bet_ledger.confirm_bet(
+		tmp_path,
+		real_bet_ledger.suggestion_key(second_row),
+		actual_stake=10.0,
+		actual_odds=2.05,
+	)
+	snapshot = real_bet_ledger.get_bankroll_snapshot(
+		tmp_path
+	)
 
-	assert rejected["ok"] is False
-	assert rejected["reason"] == "exceeds_stake_cap"
-	assert accepted["ok"] is True
-	assert accepted["bet"]["actual_stake"] == pytest.approx(85.0 * MAX_STAKE_FRACTION)
+	assert first["ok"] is True
+	assert first["stake_above_advisory_limit"] is True
+	assert second["ok"] is True
+	assert second["reason"] is None
+	assert second["advisory_stake_limit"] == pytest.approx(
+		85.0 * MAX_STAKE_FRACTION
+	)
+	assert second["stake_above_advisory_limit"] is True
+	assert second["bet"]["actual_stake"] == 10.0
+	assert snapshot["open_exposure"] == 25.0
+	assert snapshot["available_bankroll"] == 75.0
 
 
 def test_settlement_uses_actual_stake_and_actual_odds_not_suggested(tmp_path: Path) -> None:

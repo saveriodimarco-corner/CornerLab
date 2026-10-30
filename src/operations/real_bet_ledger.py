@@ -270,9 +270,10 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 			return {"ok": False, "reason": "invalid_stake", "bet": row}
 		if stake > available + 1e-9:
 			return {"ok": False, "reason": "insufficient_available_bankroll", "bet": row}
-		cap = available * MAX_STAKE_FRACTION
-		if stake > cap + 1e-9:
-			return {"ok": False, "reason": "exceeds_stake_cap", "bet": row}
+		advisory_stake_limit = available * MAX_STAKE_FRACTION
+		stake_above_advisory_limit = (
+			stake > advisory_stake_limit + 1e-9
+		)
 
 		now = _utc_now()
 		conn.execute(
@@ -284,7 +285,15 @@ def confirm_bet(base_dir: Path | str, suggestion_id: str, actual_stake: float | 
 			(-stake, row["bet_id"], now, suggestion_id),
 		)
 		conn.commit()
-		return {"ok": True, "reason": None, "bet": _fetch_bet(conn, suggestion_id)}
+		return {
+			"ok": True,
+			"reason": None,
+			"bet": _fetch_bet(conn, suggestion_id),
+			"advisory_stake_limit": advisory_stake_limit,
+			"stake_above_advisory_limit": (
+				stake_above_advisory_limit
+			),
+		}
 	finally:
 		conn.close()
 
