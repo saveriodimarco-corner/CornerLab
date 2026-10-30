@@ -36,8 +36,13 @@ The shadow collector uses:
 The existing Serie A database remains `data/collector.sqlite` and is not
 modified by the shadow job.
 
-The shadow job has no systemd timer and must be run manually until it passes
-the remaining readiness gates.
+Systemd service and timer templates are versioned in `deploy/systemd`.
+The timer is scheduled for minute 20 of every hour to avoid the Serie A jobs
+scheduled at minute 00.
+
+The units must not be installed or enabled until this branch is merged, the
+production image is rebuilt, and the image is verified. Enabling the timer
+still keeps the workflow collection-only.
 
 ## API safety
 

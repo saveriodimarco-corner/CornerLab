@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Premier League shadow collection hourly
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+Unit=cornerlab-premier-league-shadow.service
+
+[Install]
+WantedBy=timers.target
