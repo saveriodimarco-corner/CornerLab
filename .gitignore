@@ -274,3 +274,6 @@ data/paper_trading/run_history.jsonl
 # Premier League isolated shadow runtime
 /data/premier_league_shadow/
 /reports/premier_league_shadow_latest.json
+
+# Cached external result feeds
+/data/provider_cache/

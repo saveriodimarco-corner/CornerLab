@@ -365,3 +365,144 @@ def test_resolve_fixture_fails_closed_on_statistics_provider_error(
 
     updated_fixture = repo.get_fixture_by_id(fixture["fixture_id"])
     assert updated_fixture["status"] == "FT"
+
+def test_the_odds_api_fixture_uses_football_data(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        data_dir=tmp_path / "data",
+        api_football_key="free-plan-key",
+    )
+    repo = CollectorRepository(config)
+
+    fixture = repo.upsert_fixture(
+        {
+            "provider_fixture_id": (
+                "da159a6b84dbb548b4d7b94c722caac5"
+            ),
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-10-29T19:45:00Z",
+            "home_team": "Fiorentina",
+            "away_team": "Atalanta BC",
+            "status": "NS",
+            "provider": "the-odds-api",
+        }
+    )
+
+    resolver = ResultResolver(config, repo)
+
+    monkeypatch.setattr(
+        resolver.football_data,
+        "resolve_fixture",
+        lambda item: {
+            "ok": True,
+            "reason": "resolved",
+            "status": "FT",
+            "source_url": (
+                "https://example.test/2627/I1.csv"
+            ),
+            "result": {
+                "home_score": 3,
+                "away_score": 1,
+                "home_corners": 8,
+                "away_corners": 2,
+                "total_corners": 10,
+                "provider": "football-data-csv",
+            },
+        },
+    )
+
+    def api_football_must_not_run(*args, **kwargs):
+        raise AssertionError(
+            "API-Football must not receive "
+            "The Odds API fixture identifiers"
+        )
+
+    monkeypatch.setattr(
+        resolver.api_football,
+        "_perform_request",
+        api_football_must_not_run,
+    )
+
+    result = resolver.resolve_fixture(
+        fixture["fixture_id"]
+    )
+    stored = repo.get_result(fixture["fixture_id"])
+    refreshed = repo.get_fixture_by_id(
+        fixture["fixture_id"]
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "FT"
+    assert result["result"]["total_corners"] == 10
+    assert stored is not None
+    assert stored["home_corners"] == 8
+    assert stored["away_corners"] == 2
+    assert stored["provider"] == "football-data-csv"
+    assert refreshed is not None
+    assert refreshed["status"] == "FT"
+
+
+def test_the_odds_api_fixture_fails_closed_when_csv_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = CollectorConfig(
+        db_path=tmp_path / "data" / "collector.sqlite",
+        data_dir=tmp_path / "data",
+        api_football_key="free-plan-key",
+    )
+    repo = CollectorRepository(config)
+
+    fixture = repo.upsert_fixture(
+        {
+            "provider_fixture_id": (
+                "667cf69986b200753742c90cb9c5126c"
+            ),
+            "competition": "Serie A",
+            "season": "2026",
+            "kickoff_utc": "2026-10-29T17:30:00Z",
+            "home_team": "Frosinone",
+            "away_team": "Lecce",
+            "status": "NS",
+            "provider": "the-odds-api",
+        }
+    )
+
+    resolver = ResultResolver(config, repo)
+
+    monkeypatch.setattr(
+        resolver.football_data,
+        "resolve_fixture",
+        lambda item: {
+            "ok": False,
+            "reason": "football_data_match_not_found",
+        },
+    )
+
+    def api_football_must_not_run(*args, **kwargs):
+        raise AssertionError(
+            "API-Football fallback must remain disabled"
+        )
+
+    monkeypatch.setattr(
+        resolver.api_football,
+        "_perform_request",
+        api_football_must_not_run,
+    )
+
+    result = resolver.resolve_fixture(
+        fixture["fixture_id"]
+    )
+
+    assert result["ok"] is False
+    assert (
+        result["reason"]
+        == "football_data_match_not_found"
+    )
+    assert repo.get_result(
+        fixture["fixture_id"]
+    ) is None

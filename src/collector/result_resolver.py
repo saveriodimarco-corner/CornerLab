@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from src.data.providers.football_data_results import (
+    FootballDataResultsProvider,
+)
 from src.data.providers.odds.api_football_odds import (
     ApiFootballOddsProvider,
     ApiFootballProviderError,
@@ -19,6 +22,10 @@ class ResultResolver:
         self.config = config
         self.repo = repo
         self.api_football = ApiFootballOddsProvider(api_key=config.api_football_key)
+        self.football_data = FootballDataResultsProvider(
+            config.data_dir,
+            timeout_seconds=config.request_timeout_seconds,
+        )
 
     def upsert_result(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         return self.repo.upsert_result(payload)
@@ -44,6 +51,81 @@ class ResultResolver:
                 "ok": False,
                 "reason": "fixture_not_found",
                 "fixture_id": fixture_id,
+            }
+
+        fixture_provider = str(
+            fixture.get("provider") or ""
+        ).strip().casefold().replace("_", "-")
+        competition = str(
+            fixture.get("competition") or ""
+        ).strip()
+
+        if (
+            fixture_provider == "the-odds-api"
+            and competition == "Serie A"
+        ):
+            resolution = self.football_data.resolve_fixture(
+                fixture
+            )
+
+            if resolution.get("ok") is not True:
+                response = {
+                    "ok": False,
+                    "reason": resolution.get(
+                        "reason",
+                        "football_data_unavailable",
+                    ),
+                    "fixture_id": fixture_id,
+                }
+                if resolution.get("source_url"):
+                    response["source_url"] = resolution[
+                        "source_url"
+                    ]
+                return response
+
+            source_result = dict(
+                resolution.get("result") or {}
+            )
+            result = {
+                "fixture_id": int(fixture["fixture_id"]),
+                "home_score": source_result["home_score"],
+                "away_score": source_result["away_score"],
+                "home_corners": source_result[
+                    "home_corners"
+                ],
+                "away_corners": source_result[
+                    "away_corners"
+                ],
+                "total_corners": source_result[
+                    "total_corners"
+                ],
+                "settled_at": self.config.now_utc(),
+                "provider": source_result["provider"],
+            }
+
+            self.repo.upsert_fixture({
+                **fixture,
+                "status": resolution.get(
+                    "status",
+                    "FT",
+                ),
+            })
+            self.repo.upsert_result(result)
+
+            return {
+                "ok": True,
+                "reason": "resolved",
+                "fixture_id": int(
+                    fixture["fixture_id"]
+                ),
+                "status": resolution.get(
+                    "status",
+                    "FT",
+                ),
+                "source_url": resolution.get(
+                    "source_url"
+                ),
+                "result": result,
             }
 
         provider_fixture_id = fixture.get("provider_fixture_id")
