@@ -1,0 +1,1444 @@
+{
+  "run_type": "premier_league_model_validation",
+  "competition": "Premier League",
+  "started_at": "2026-10-31T09:39:08Z",
+  "completed_at": "2026-10-31T09:40:57Z",
+  "historical_matches": 1220,
+  "diagnostic_dataset_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/advanced_features.parquet",
+  "season_counts": {
+    "2023/24": 380,
+    "2024/25": 380,
+    "2025/26": 380,
+    "2026/27": 80
+  },
+  "source_hashes": {
+    "https://www.football-data.co.uk/mmz4281/2324/E0.csv": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3",
+    "https://www.football-data.co.uk/mmz4281/2425/E0.csv": "d0c8ce4a96d886cf60cf101f570f4a3893844226f91c7bd769eb568c49edbfa4",
+    "https://www.football-data.co.uk/mmz4281/2526/E0.csv": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62",
+    "https://www.football-data.co.uk/mmz4281/2627/E0.csv": "4cd9d41c75bdaafce0657cb97ce76438f8016605957af80896b60a0f21955ab2"
+  },
+  "serie_a_artifacts_unchanged": true,
+  "published_artifacts": [],
+  "selected_features": {
+    "selected_features_over105.json": [
+      "offensive_elo_difference",
+      "away_rest_days",
+      "corners_for_last10",
+      "elo_momentum_last5",
+      "rolling_attack_rating_last5",
+      "corners_against_ewma",
+      "corners_for_ewma",
+      "attack_difference",
+      "total_corners_last3",
+      "home_defense_rating",
+      "expected_home_corners",
+      "corners_for_last5",
+      "expected_total_corners",
+      "corners_for_last3",
+      "corners_against_last3",
+      "home_attack_rating",
+      "expected_away_corners",
+      "expected_total_corners_baseline",
+      "tempo_difference",
+      "total_corners_ewma",
+      "total_corners_last5",
+      "corners_against_std_last5",
+      "home_defensive_elo",
+      "attack_percentile",
+      "expected_corner_error_history",
+      "expected_home_corner_difference",
+      "total_corners_last10",
+      "home_offensive_elo",
+      "expected_away_corner",
+      "away_defensive_elo",
+      "total_corners_std_last5",
+      "defensive_elo_difference",
+      "away_attack_rating",
+      "expected_away_corners_baseline",
+      "away_offensive_elo",
+      "season_match_number",
+      "elo_trend_last10",
+      "corners_against_last10",
+      "away_total_corners_last5",
+      "away_defense_rating",
+      "rest_days_difference",
+      "elo_variation",
+      "expected_corner_strength",
+      "tempo_trend",
+      "away_corners_for_last5",
+      "expected_away_corner_difference",
+      "expected_corner_delta",
+      "combined_trend",
+      "attack_trend",
+      "data_quality_score",
+      "corners_for_std_last10",
+      "defence_trend",
+      "insufficient_history",
+      "defence_difference",
+      "combined_volatility",
+      "corners_for_std_last5",
+      "total_corners_std_last10",
+      "coefficient_of_variation_last10"
+    ],
+    "selected_features_over115.json": [
+      "offensive_elo_difference",
+      "away_rest_days",
+      "rolling_attack_rating_last5",
+      "total_corners_last5",
+      "total_corners_last10",
+      "corners_for_last5",
+      "corners_for_ewma",
+      "total_corners_ewma",
+      "corners_for_last3",
+      "corners_against_last5",
+      "away_defensive_elo",
+      "expected_corner_error_history",
+      "elo_momentum_last5",
+      "expected_total_corners",
+      "corners_for_std_last5",
+      "corners_for_last10",
+      "expected_total_corners_baseline",
+      "corners_for_std_last10",
+      "total_corners_std_last5",
+      "expected_home_corners_baseline",
+      "tempo_difference",
+      "tempo_trend",
+      "home_defensive_elo",
+      "home_attack_rating",
+      "away_total_corners_last5",
+      "corners_against_std_last5",
+      "away_matches_played",
+      "expected_home_corner",
+      "defensive_elo_difference",
+      "combined_volatility",
+      "attack_difference",
+      "away_defense_rating",
+      "expected_corner_strength",
+      "away_offensive_elo",
+      "elo_trend_last10",
+      "elo_variation",
+      "expected_away_corners_baseline",
+      "corners_against_last10",
+      "corners_against_ewma",
+      "away_attack_vs_home_defense",
+      "combined_trend",
+      "corners_against_last3",
+      "away_corners_for_last5",
+      "home_offensive_elo",
+      "total_corners_last3",
+      "attack_trend",
+      "expected_away_corners",
+      "rest_days_difference",
+      "data_quality_score",
+      "insufficient_history",
+      "attack_percentile",
+      "defence_difference",
+      "defence_trend",
+      "expected_corner_delta",
+      "expected_home_corner_difference",
+      "total_corners_std_last10",
+      "expected_away_corner_difference",
+      "coefficient_of_variation_last10"
+    ],
+    "selected_features_over85.json": [
+      "rolling_attack_rating_last5",
+      "offensive_elo_difference",
+      "home_attack_rating",
+      "defensive_elo_difference",
+      "corners_for_ewma",
+      "total_corners_ewma",
+      "corners_against_last3",
+      "corners_for_last5",
+      "home_rest_days",
+      "elo_momentum_last5",
+      "attack_difference",
+      "corners_for_last3",
+      "corners_against_ewma",
+      "expected_total_corners_baseline",
+      "home_defense_rating",
+      "expected_home_corners_baseline",
+      "expected_away_corners_baseline",
+      "total_corners_last5",
+      "combined_trend",
+      "total_corners_last10",
+      "total_corners_last3",
+      "expected_away_corners",
+      "corners_against_std_last5",
+      "defence_difference",
+      "expected_total_corners",
+      "corners_against_last10",
+      "away_corners_for_last5",
+      "corners_for_last10",
+      "attack_percentile",
+      "away_defense_rating",
+      "defence_trend",
+      "expected_away_corner",
+      "attack_trend",
+      "season_match_number",
+      "data_quality_score",
+      "away_attack_rating",
+      "insufficient_history",
+      "expected_corner_error_history",
+      "tempo_difference",
+      "rest_days_difference",
+      "away_offensive_elo",
+      "elo_trend_last10",
+      "elo_variation",
+      "away_defensive_elo",
+      "home_defensive_elo",
+      "expected_corner_strength",
+      "away_total_corners_last5",
+      "home_offensive_elo",
+      "total_corners_std_last5",
+      "expected_corner_delta",
+      "expected_home_corner_difference",
+      "combined_volatility",
+      "tempo_trend",
+      "total_corners_std_last10",
+      "corners_for_std_last5",
+      "corners_for_std_last10",
+      "expected_away_corner_difference",
+      "coefficient_of_variation_last10"
+    ],
+    "selected_features_over95.json": [
+      "offensive_elo_difference",
+      "attack_difference",
+      "home_rest_days",
+      "away_corners_for_last5",
+      "expected_away_corners_baseline",
+      "corners_against_last3",
+      "corners_for_ewma",
+      "corners_for_last10",
+      "total_corners_last3",
+      "corners_for_last3",
+      "corners_for_last5",
+      "total_corners_std_last5",
+      "combined_trend",
+      "elo_momentum_last5",
+      "corners_against_last5",
+      "corners_against_std_last5",
+      "expected_away_corners",
+      "corners_against_ewma",
+      "tempo_trend",
+      "expected_total_corners_baseline",
+      "expected_home_corners",
+      "total_corners_ewma",
+      "rolling_attack_rating_last5",
+      "insufficient_history",
+      "attack_percentile",
+      "tempo_difference",
+      "attack_trend",
+      "expected_home_corner_difference",
+      "away_total_corners_last5",
+      "home_defensive_elo",
+      "home_attack_rating",
+      "total_corners_last10",
+      "defence_trend",
+      "expected_home_corner",
+      "away_defensive_elo",
+      "elo_variation",
+      "away_offensive_elo",
+      "elo_trend_last10",
+      "away_attack_rating",
+      "corners_against_last10",
+      "away_corners_against_last5",
+      "expected_away_corner_difference",
+      "defensive_elo_difference",
+      "season_match_number",
+      "rest_days_difference",
+      "expected_corner_strength",
+      "home_offensive_elo",
+      "corners_for_std_last5",
+      "expected_total_corners",
+      "corners_for_std_last10",
+      "expected_corner_delta",
+      "defence_difference",
+      "data_quality_score",
+      "combined_volatility",
+      "total_corners_std_last10",
+      "total_corners_last5",
+      "expected_corner_error_history",
+      "coefficient_of_variation_last10"
+    ],
+    "selected_features_regression.json": [
+      "offensive_elo_difference",
+      "away_rest_days",
+      "corners_for_last5",
+      "corners_for_ewma",
+      "total_corners_last3",
+      "expected_total_corners_baseline",
+      "total_corners_last10",
+      "elo_momentum_last5",
+      "total_corners_last5",
+      "rolling_attack_rating_last5",
+      "attack_minus_defense",
+      "corners_for_last10",
+      "total_corners_ewma",
+      "corners_for_last3",
+      "corners_against_last3",
+      "attack_difference",
+      "expected_total_corners",
+      "total_corners_std_last5",
+      "tempo_difference",
+      "expected_away_corners",
+      "away_total_corners_last5",
+      "expected_home_corners_baseline",
+      "home_defensive_elo",
+      "away_defensive_elo",
+      "corners_for_std_last5",
+      "corners_against_std_last5",
+      "attack_percentile",
+      "away_offensive_elo",
+      "corners_for_std_last10",
+      "home_offensive_elo",
+      "season_match_number",
+      "expected_home_corner",
+      "total_corners_std_last10",
+      "expected_corner_error_history",
+      "elo_trend_last10",
+      "away_attack_vs_home_defense",
+      "expected_corner_strength",
+      "home_defense_rating",
+      "expected_away_corners_baseline",
+      "rest_days_difference",
+      "defensive_elo_difference",
+      "corners_against_ewma",
+      "combined_trend",
+      "elo_variation",
+      "defence_trend",
+      "attack_trend",
+      "corners_against_last10",
+      "tempo_trend",
+      "defence_difference",
+      "away_corners_for_last5",
+      "expected_home_corner_difference",
+      "data_quality_score",
+      "coefficient_of_variation_last10",
+      "expected_corner_delta",
+      "expected_away_corner_difference",
+      "away_corners_against_last5",
+      "insufficient_history",
+      "combined_volatility"
+    ]
+  },
+  "regression_diagnostics": [
+    {
+      "model_name": "league_mean_baseline",
+      "mae": 2.684792243767313,
+      "rmse": 3.3112032296817495,
+      "r2": -0.030509054316788298,
+      "mean_prediction_bias": -0.5697368421052637,
+      "accepted": false
+    },
+    {
+      "model_name": "recent_form_baseline",
+      "mae": 2.746425438596492,
+      "rmse": 3.361698745813244,
+      "r2": -0.0621790277261578,
+      "mean_prediction_bias": 0.06620614035087721,
+      "accepted": false
+    },
+    {
+      "model_name": "poisson_regression",
+      "mae": 2.7116611895861213,
+      "rmse": 3.3649561301903432,
+      "r2": -0.06423846369222175,
+      "mean_prediction_bias": 0.29797737701662114,
+      "accepted": false
+    },
+    {
+      "model_name": "negative_binomial_regression",
+      "mae": 2.710746786247679,
+      "rmse": 3.3596857051149596,
+      "r2": -0.06090730793464805,
+      "mean_prediction_bias": -0.16891720610430286,
+      "accepted": false
+    },
+    {
+      "model_name": "ridge_regression",
+      "mae": 2.7247025726953464,
+      "rmse": 3.3814503326243353,
+      "r2": -0.07469731434895222,
+      "mean_prediction_bias": 0.2984986306755433,
+      "accepted": false
+    },
+    {
+      "model_name": "hist_gradient_boosting_regression",
+      "mae": 2.877284240566051,
+      "rmse": 3.5463726916327505,
+      "r2": -0.18208548913567268,
+      "mean_prediction_bias": 0.07207154093147494,
+      "accepted": false
+    }
+  ],
+  "classification_diagnostics": [
+    {
+      "target_name": "over_8_5",
+      "model_name": "historical_base_rate_baseline",
+      "brier_score": 0.22822022160664823,
+      "baseline_metric_value": NaN,
+      "roc_auc": 0.5,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.06315789473684208,
+        "calibration_slope": 0.33002612299685075,
+        "calibration_intercept": 0.3427736176093622,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7236842105263158,
+            "observed": 0.6605263157894737,
+            "count": 380
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_8_5",
+      "model_name": "logistic_regression",
+      "brier_score": 0.23007156670678128,
+      "baseline_metric_value": 0.22822022160664823,
+      "roc_auc": 0.4860557768924303,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.01348234632799843,
+        "calibration_slope": -0.0028170579077693566,
+        "calibration_intercept": 0.6624640865667238,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4682294184243205,
+            "observed": 0.5,
+            "count": 6
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5646508007897508,
+            "observed": 0.7183098591549296,
+            "count": 71
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6530526040270631,
+            "observed": 0.6614583333333334,
+            "count": 192
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7378889584496301,
+            "observed": 0.6176470588235294,
+            "count": 102
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8486075112387875,
+            "observed": 0.7777777777777778,
+            "count": 9
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_8_5",
+      "model_name": "hist_gradient_boosting_classifier",
+      "brier_score": 0.25301869457648535,
+      "baseline_metric_value": 0.22822022160664823,
+      "roc_auc": 0.5059760956175299,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.019810879935720102,
+        "calibration_slope": 0.006404129293869135,
+        "calibration_intercept": 0.6526504401266219,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2536427524004145,
+            "observed": 0.5,
+            "count": 6
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.3721693417526154,
+            "observed": 0.45454545454545453,
+            "count": 11
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4607247400432261,
+            "observed": 0.6086956521739131,
+            "count": 23
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5474099353352861,
+            "observed": 0.7073170731707317,
+            "count": 41
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6548504455098046,
+            "observed": 0.7241379310344828,
+            "count": 58
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7480582668168329,
+            "observed": 0.6785714285714286,
+            "count": 84
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8485214056352266,
+            "observed": 0.5894736842105263,
+            "count": 95
+          },
+          {
+            "bin_lower": 0.9,
+            "bin_upper": 1.0,
+            "mean_pred": 0.9421962667680561,
+            "observed": 0.7258064516129032,
+            "count": 62
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_8_5",
+      "model_name": "poisson_probability",
+      "brier_score": 0.29369938167771437,
+      "baseline_metric_value": 0.22822022160664823,
+      "roc_auc": 0.48062015503875966,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.13107328920756287,
+        "calibration_slope": -0.05292885946780823,
+        "calibration_intercept": 0.6386599104838502,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.3823712528650381,
+            "observed": 0.69377990430622,
+            "count": 209
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4179456628857266,
+            "observed": 0.6198830409356725,
+            "count": 171
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_8_5",
+      "model_name": "negative_binomial_probability",
+      "brier_score": 0.26985726214885875,
+      "baseline_metric_value": 0.22822022160664823,
+      "roc_auc": 0.48062015503875966,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.07076284663315847,
+        "calibration_slope": -0.06468049043149156,
+        "calibration_intercept": 0.6470665295710812,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.39327051503115973,
+            "observed": 1.0,
+            "count": 2
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4476982763162483,
+            "observed": 0.6568364611260054,
+            "count": 373
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.51047134843528,
+            "observed": 0.8,
+            "count": 5
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_9_5",
+      "model_name": "historical_base_rate_baseline",
+      "brier_score": 0.2478964681440443,
+      "baseline_metric_value": NaN,
+      "roc_auc": 0.5,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.043421052631578805,
+        "calibration_slope": 0.20533227954697073,
+        "calibration_intercept": 0.4742583665526004,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6065789473684209,
+            "observed": 0.5631578947368421,
+            "count": 380
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_9_5",
+      "model_name": "logistic_regression",
+      "brier_score": 0.2650554782834208,
+      "baseline_metric_value": 0.2478964681440443,
+      "roc_auc": 0.4715685170588898,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.016541358562508924,
+        "calibration_slope": -0.06319199968429719,
+        "calibration_intercept": 0.5687162060299855,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.27886181324114667,
+            "observed": 0.6666666666666666,
+            "count": 3
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.36007105241256065,
+            "observed": 0.6086956521739131,
+            "count": 46
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.45289402434041265,
+            "observed": 0.5641025641025641,
+            "count": 117
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5450867979702642,
+            "observed": 0.5819672131147541,
+            "count": 122
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6382550191883759,
+            "observed": 0.5492957746478874,
+            "count": 71
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7316737216410045,
+            "observed": 0.3684210526315789,
+            "count": 19
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8355753768108494,
+            "observed": 0.5,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_9_5",
+      "model_name": "hist_gradient_boosting_classifier",
+      "brier_score": 0.2855858055698829,
+      "baseline_metric_value": 0.2478964681440443,
+      "roc_auc": 0.5298389820966107,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.017340741570256238,
+        "calibration_slope": 0.016767804518839722,
+        "calibration_intercept": 0.5587688765922699,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.0,
+            "bin_upper": 0.1,
+            "mean_pred": 0.07154676861521626,
+            "observed": 0.8,
+            "count": 5
+          },
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.16565873891101393,
+            "observed": 0.5,
+            "count": 18
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2504332557238979,
+            "observed": 0.4444444444444444,
+            "count": 36
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.34949123357671896,
+            "observed": 0.4423076923076923,
+            "count": 52
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4476005925640604,
+            "observed": 0.7021276595744681,
+            "count": 47
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5502867094394749,
+            "observed": 0.5818181818181818,
+            "count": 55
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6487433368393218,
+            "observed": 0.5769230769230769,
+            "count": 52
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7580347584774861,
+            "observed": 0.52,
+            "count": 50
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8427438449009558,
+            "observed": 0.6458333333333334,
+            "count": 48
+          },
+          {
+            "bin_lower": 0.9,
+            "bin_upper": 1.0,
+            "mean_pred": 0.9199089022008696,
+            "observed": 0.5882352941176471,
+            "count": 17
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_9_5",
+      "model_name": "poisson_probability",
+      "brier_score": 0.2970985488480133,
+      "baseline_metric_value": 0.2478964681440443,
+      "roc_auc": 0.47100551739668955,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.07269840887951438,
+        "calibration_slope": -0.1866240245488024,
+        "calibration_intercept": 0.44284300101639723,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.28636657036816643,
+            "observed": 0.5714285714285714,
+            "count": 35
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.34485702614452407,
+            "observed": 0.5709779179810726,
+            "count": 317
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4207609509519154,
+            "observed": 0.4642857142857143,
+            "count": 28
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_9_5",
+      "model_name": "negative_binomial_probability",
+      "brier_score": 0.2741570967311487,
+      "baseline_metric_value": 0.2478964681440443,
+      "roc_auc": 0.47100551739668955,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.05312015111580042,
+        "calibration_slope": -0.24294051318456558,
+        "calibration_intercept": 0.4681419571027204,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.37926955451617844,
+            "observed": 0.5846994535519126,
+            "count": 183
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.42614064873484714,
+            "observed": 0.5408163265306123,
+            "count": 196
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5131320994968384,
+            "observed": 1.0,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_10_5",
+      "model_name": "historical_base_rate_baseline",
+      "brier_score": 0.25051419667590025,
+      "baseline_metric_value": NaN,
+      "roc_auc": 0.5,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.06710526315789467,
+        "calibration_slope": 0.0068959309519710035,
+        "calibration_intercept": 0.4367332198806645,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5039473684210526,
+            "observed": 0.4368421052631579,
+            "count": 380
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_10_5",
+      "model_name": "logistic_regression",
+      "brier_score": 0.2656454095787879,
+      "baseline_metric_value": 0.25051419667590025,
+      "roc_auc": 0.4620819727508164,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.014608735085250176,
+        "calibration_slope": -0.060707670672603194,
+        "calibration_intercept": 0.4132491563261322,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.1917912353912129,
+            "observed": 0.25,
+            "count": 4
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2616481668243973,
+            "observed": 0.46296296296296297,
+            "count": 54
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.3514828896371153,
+            "observed": 0.4666666666666667,
+            "count": 135
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.44568549640621613,
+            "observed": 0.45535714285714285,
+            "count": 112
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5364267307054637,
+            "observed": 0.35714285714285715,
+            "count": 56
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6365683783694307,
+            "observed": 0.3125,
+            "count": 16
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7053559697058234,
+            "observed": 0.0,
+            "count": 1
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8716696823134698,
+            "observed": 0.5,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_10_5",
+      "model_name": "hist_gradient_boosting_classifier",
+      "brier_score": 0.2979858082353268,
+      "baseline_metric_value": 0.25051419667590025,
+      "roc_auc": 0.49867695079382945,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.020308674372777828,
+        "calibration_slope": -0.00020342916878447843,
+        "calibration_intercept": 0.43675947413515837,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.0,
+            "bin_upper": 0.1,
+            "mean_pred": 0.07156333635310952,
+            "observed": 0.48148148148148145,
+            "count": 27
+          },
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.14776570393051908,
+            "observed": 0.3269230769230769,
+            "count": 52
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2542454766885819,
+            "observed": 0.5102040816326531,
+            "count": 49
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.35719409085905157,
+            "observed": 0.48484848484848486,
+            "count": 66
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.44664418524468735,
+            "observed": 0.4418604651162791,
+            "count": 43
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5471196819689198,
+            "observed": 0.3541666666666667,
+            "count": 48
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6534689207701009,
+            "observed": 0.4444444444444444,
+            "count": 45
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7383356702124595,
+            "observed": 0.5,
+            "count": 26
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8484952334756087,
+            "observed": 0.3684210526315789,
+            "count": 19
+          },
+          {
+            "bin_lower": 0.9,
+            "bin_upper": 1.0,
+            "mean_pred": 0.9260289321339666,
+            "observed": 0.6,
+            "count": 5
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_10_5",
+      "model_name": "poisson_probability",
+      "brier_score": 0.2719971916704511,
+      "baseline_metric_value": 0.25051419667590025,
+      "roc_auc": 0.463911721652967,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.030582636518828903,
+        "calibration_slope": -0.12181810964642385,
+        "calibration_intercept": 0.32707398670902027,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.19511358008653448,
+            "observed": 0.16666666666666666,
+            "count": 6
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2654523595425867,
+            "observed": 0.44871794871794873,
+            "count": 234
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.33268939217719823,
+            "observed": 0.43283582089552236,
+            "count": 134
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.42778697755008777,
+            "observed": 0.2,
+            "count": 5
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5063762977848768,
+            "observed": 1.0,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_10_5",
+      "model_name": "negative_binomial_probability",
+      "brier_score": 0.255569534833042,
+      "baseline_metric_value": 0.25051419667590025,
+      "roc_auc": 0.463911721652967,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.02611653833624519,
+        "calibration_slope": -0.1727006029791578,
+        "calibration_intercept": 0.33631079372761435,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.28843943968948305,
+            "observed": 0.2857142857142857,
+            "count": 14
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.35237278319494536,
+            "observed": 0.4608150470219436,
+            "count": 319
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4220991012659386,
+            "observed": 0.3111111111111111,
+            "count": 45
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.535722198830128,
+            "observed": 0.5,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_11_5",
+      "model_name": "historical_base_rate_baseline",
+      "brier_score": 0.21843663434903055,
+      "baseline_metric_value": NaN,
+      "roc_auc": 0.5,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.04868421052631583,
+        "calibration_slope": -0.13411807886519078,
+        "calibration_intercept": 0.24121993617548973,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.36447368421052634,
+            "observed": 0.3157894736842105,
+            "count": 380
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_11_5",
+      "model_name": "logistic_regression",
+      "brier_score": 0.23264782466173653,
+      "baseline_metric_value": 0.21843663434903055,
+      "roc_auc": 0.47432692307692303,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.0164112849654379,
+        "calibration_slope": -0.021544202221819297,
+        "calibration_intercept": 0.2892342876632047,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.0,
+            "bin_upper": 0.1,
+            "mean_pred": 0.08244993397473352,
+            "observed": 0.38461538461538464,
+            "count": 13
+          },
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.1589222143595374,
+            "observed": 0.34782608695652173,
+            "count": 138
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.25027618786689065,
+            "observed": 0.3150684931506849,
+            "count": 146
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.34303895041323235,
+            "observed": 0.20634920634920634,
+            "count": 63
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.42591961142445484,
+            "observed": 0.375,
+            "count": 16
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.526526551291213,
+            "observed": 0.5,
+            "count": 2
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.6776451577385177,
+            "observed": 0.0,
+            "count": 1
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7231214723609016,
+            "observed": 1.0,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_11_5",
+      "model_name": "hist_gradient_boosting_classifier",
+      "brier_score": 0.2512212625253551,
+      "baseline_metric_value": 0.21843663434903055,
+      "roc_auc": 0.5053846153846153,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.019526280221254612,
+        "calibration_slope": 0.005105873824390244,
+        "calibration_intercept": 0.3238919029094495,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.0,
+            "bin_upper": 0.1,
+            "mean_pred": 0.05511500932260121,
+            "observed": 0.2894736842105263,
+            "count": 114
+          },
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.14332111341670628,
+            "observed": 0.35802469135802467,
+            "count": 81
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.25039865324762817,
+            "observed": 0.34177215189873417,
+            "count": 79
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.34643234097929687,
+            "observed": 0.2830188679245283,
+            "count": 53
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4482007592336806,
+            "observed": 0.2692307692307692,
+            "count": 26
+          },
+          {
+            "bin_lower": 0.5,
+            "bin_upper": 0.6000000000000001,
+            "mean_pred": 0.5427376855998371,
+            "observed": 0.3125,
+            "count": 16
+          },
+          {
+            "bin_lower": 0.6000000000000001,
+            "bin_upper": 0.7000000000000001,
+            "mean_pred": 0.637228391705063,
+            "observed": 0.3333333333333333,
+            "count": 6
+          },
+          {
+            "bin_lower": 0.7000000000000001,
+            "bin_upper": 0.8,
+            "mean_pred": 0.7597125179112459,
+            "observed": 0.3333333333333333,
+            "count": 3
+          },
+          {
+            "bin_lower": 0.8,
+            "bin_upper": 0.9,
+            "mean_pred": 0.8265242636216055,
+            "observed": 0.5,
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_11_5",
+      "model_name": "poisson_probability",
+      "brier_score": 0.23362581417918785,
+      "baseline_metric_value": 0.21843663434903055,
+      "roc_auc": 0.474551282051282,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.02382549510345558,
+        "calibration_slope": -0.04349401950296657,
+        "calibration_intercept": 0.253726836763186,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.0,
+            "bin_upper": 0.1,
+            "mean_pred": 0.09145843064278211,
+            "observed": 0.6,
+            "count": 5
+          },
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.16559293157274313,
+            "observed": 0.34951456310679613,
+            "count": 206
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.23604647909400953,
+            "observed": 0.2608695652173913,
+            "count": 161
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.32561715664941243,
+            "observed": 0.2857142857142857,
+            "count": 7
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.43796020864575763,
+            "observed": 1.0,
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "target_name": "over_11_5",
+      "model_name": "negative_binomial_probability",
+      "brier_score": 0.21962677982881018,
+      "baseline_metric_value": 0.21843663434903055,
+      "roc_auc": 0.474551282051282,
+      "accepted": false,
+      "calibration": {
+        "ece": 0.020359990662070827,
+        "calibration_slope": -0.07017846813449416,
+        "calibration_intercept": 0.25052043792427153,
+        "reliability_curve": [
+          {
+            "bin_lower": 0.1,
+            "bin_upper": 0.2,
+            "mean_pred": 0.19719818600572392,
+            "observed": 0.6666666666666666,
+            "count": 3
+          },
+          {
+            "bin_lower": 0.2,
+            "bin_upper": 0.30000000000000004,
+            "mean_pred": 0.2645394294792054,
+            "observed": 0.3424124513618677,
+            "count": 257
+          },
+          {
+            "bin_lower": 0.30000000000000004,
+            "bin_upper": 0.4,
+            "mean_pred": 0.32644003666539145,
+            "observed": 0.24786324786324787,
+            "count": 117
+          },
+          {
+            "bin_lower": 0.4,
+            "bin_upper": 0.5,
+            "mean_pred": 0.4439764835566038,
+            "observed": 0.3333333333333333,
+            "count": 3
+          }
+        ]
+      }
+    }
+  ],
+  "best_model_diagnostics": {
+    "actual_total_corners": {
+      "accepted": false,
+      "model_name": "league_mean_baseline",
+      "primary_metric_name": "mae",
+      "primary_metric_value": 2.684792243767313,
+      "baseline_metric_value": 2.684792243767313
+    },
+    "over_8_5": {
+      "accepted": false,
+      "model_name": "historical_base_rate_baseline",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.22822022160664823,
+      "baseline_metric_value": 0.22822022160664823
+    },
+    "over_9_5": {
+      "accepted": false,
+      "model_name": "historical_base_rate_baseline",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.2478964681440443,
+      "baseline_metric_value": 0.2478964681440443
+    },
+    "over_10_5": {
+      "accepted": false,
+      "model_name": "historical_base_rate_baseline",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.25051419667590025,
+      "baseline_metric_value": 0.25051419667590025
+    },
+    "over_11_5": {
+      "accepted": false,
+      "model_name": "historical_base_rate_baseline",
+      "primary_metric_name": "brier_score",
+      "primary_metric_value": 0.21843663434903055,
+      "baseline_metric_value": 0.21843663434903055
+    }
+  },
+  "validation_passed": false,
+  "gates": {
+    "chronology_ok": true,
+    "train_after_validation_false": true,
+    "validation_rows_380": true,
+    "accepted_non_baseline_model": false,
+    "mae_better_than_baseline": false,
+    "mae_improvement_at_least_0_5_percent": false,
+    "absolute_bias_at_most_0_5": false,
+    "mean_probability_brier_better": true,
+    "no_line_materially_worse": true,
+    "no_outcome_feature_leakage": true
+  },
+  "model_name": "league_mean_baseline",
+  "validation_rows": 380,
+  "training_rows": 760,
+  "mae": 2.684792243767313,
+  "baseline_mae": 2.684792243767313,
+  "mae_improvement_fraction": 0.0,
+  "mean_prediction_bias": -0.5697368421052637,
+  "mean_model_brier": 0.23611646890195825,
+  "mean_baseline_brier": 0.23626688019390585,
+  "probability_metrics": {
+    "8.5": {
+      "model_brier": 0.22869054375855205,
+      "baseline_brier": 0.22822022160664823,
+      "improvement": -0.0004703221519038181
+    },
+    "9.5": {
+      "model_brier": 0.24827406938517507,
+      "baseline_brier": 0.2478964681440443,
+      "improvement": -0.00037760124113075944
+    },
+    "10.5": {
+      "model_brier": 0.24858162588909472,
+      "baseline_brier": 0.25051419667590025,
+      "improvement": 0.001932570786805532
+    },
+    "11.5": {
+      "model_brier": 0.2189196365750113,
+      "baseline_brier": 0.21843663434903055,
+      "improvement": -0.00048300222598074427
+    }
+  },
+  "leaked_features": []
+}

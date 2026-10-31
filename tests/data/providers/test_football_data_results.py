@@ -90,3 +90,41 @@ def test_missing_match_fails_closed(
         result["reason"]
         == "football_data_match_not_found"
     )
+
+def test_resolves_premier_league_aliases_and_division(
+    tmp_path: Path,
+) -> None:
+    content = b"""Date,HomeTeam,AwayTeam,FTHG,FTAG,HC,AC
+31/10/2026,Man City,Brighton,2,1,7,4
+"""
+    calls: list[str] = []
+
+    def opener(url: str, timeout: int):
+        calls.append(url)
+        return FakeResponse(content)
+
+    provider = FootballDataResultsProvider(
+        tmp_path,
+        opener=opener,
+    )
+    result = provider.resolve_fixture(
+        {
+            "competition": "Premier League",
+            "kickoff_utc": (
+                "2026-10-31T15:00:00Z"
+            ),
+            "home_team": "Manchester City",
+            "away_team": (
+                "Brighton and Hove Albion"
+            ),
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["result"][
+        "total_corners"
+    ] == 11
+    assert len(calls) == 1
+    assert calls[0].endswith(
+        "/2627/E0.csv"
+    )

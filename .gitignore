@@ -277,3 +277,8 @@ data/paper_trading/run_history.jsonl
 
 # Cached external result feeds
 /data/provider_cache/
+
+# Premier League forward runtime reports
+/reports/premier_league_forward_current.json
+/reports/premier_league_forward_current.csv
+/reports/premier_league_forward_settlement_latest.json

@@ -173,7 +173,11 @@ class TestTheOddsApiProvider:
         assert mocked.call_count == 0
 
     def test_redaction_applies_to_sensitive_payloads_and_exceptions(self) -> None:
-        provider = TheOddsApiProvider(api_key="super-secret", base_url="https://example.test")
+        provider = TheOddsApiProvider(
+            api_key="super-secret",
+            base_url="https://example.test",
+            retries=0,
+        )
         redacted = provider._redact_sensitive({"api_key": "super-secret", "detail": "value"})
         assert redacted["api_key"] == "***"
         assert redacted["detail"] == "value"
@@ -239,3 +243,91 @@ def test_fixture_matching_rejects_missing_timestamp() -> None:
         tolerance_minutes=30,
     )
     assert result["match_status"] == "UNMATCHED"
+
+def _http_error(
+    status_code: int,
+) -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = status_code
+    response.url = (
+        "https://example.test/v4/sports"
+    )
+    return requests.HTTPError(
+        f"{status_code} provider error",
+        response=response,
+    )
+
+
+def test_transient_502_is_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TheOddsApiProvider(
+        api_key="test-key",
+        base_url="https://example.test",
+        retries=2,
+        rate_limit_backoff=0.5,
+    )
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(
+        "src.data.providers.odds."
+        "the_odds_api.time.sleep",
+        lambda value: sleeps.append(value),
+    )
+
+    with patch.object(
+        provider,
+        "_perform_request",
+        side_effect=[
+            _http_error(502),
+            (
+                {"status": "ok"},
+                {
+                    "x-requests-remaining": "99",
+                },
+            ),
+        ],
+    ) as mocked:
+        payload = provider._get_json(
+            "/v4/sports"
+        )
+
+    assert payload == {"status": "ok"}
+    assert mocked.call_count == 2
+    assert sleeps == [0.5]
+    assert provider.get_usage()[
+        "x-requests-remaining"
+    ] == "99"
+
+
+def test_non_transient_401_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TheOddsApiProvider(
+        api_key="test-key",
+        base_url="https://example.test",
+        retries=2,
+    )
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(
+        "src.data.providers.odds."
+        "the_odds_api.time.sleep",
+        lambda value: sleeps.append(value),
+    )
+
+    with patch.object(
+        provider,
+        "_perform_request",
+        side_effect=_http_error(401),
+    ) as mocked:
+        with pytest.raises(
+            RuntimeError,
+            match="request failed",
+        ):
+            provider._get_json(
+                "/v4/sports"
+            )
+
+    assert mocked.call_count == 1
+    assert sleeps == []

@@ -28,6 +28,34 @@ SHADOW_DB_RELATIVE_PATH = Path(
 SHADOW_REPORT_NAME = "premier_league_shadow_latest.json"
 
 
+def _season_label(
+    kickoff_utc: str,
+) -> str:
+    try:
+        kickoff = datetime.fromisoformat(
+            str(kickoff_utc).replace(
+                "Z",
+                "+00:00",
+            )
+        )
+    except (TypeError, ValueError):
+        kickoff = datetime.now(timezone.utc)
+
+    year = kickoff.year
+
+    if kickoff.month >= 7:
+        start_year = year
+        end_year = year + 1
+    else:
+        start_year = year - 1
+        end_year = year
+
+    return (
+        f"{start_year}/"
+        f"{str(end_year)[-2:]}"
+    )
+
+
 def _fixture_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
@@ -49,8 +77,8 @@ def _fixture_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "provider_fixture_id": provider_fixture_id,
                 "competition": COMPETITION,
-                "season": str(
-                    datetime.now(timezone.utc).year
+                "season": _season_label(
+                    kickoff_utc
                 ),
                 "kickoff_utc": kickoff_utc,
                 "home_team": home_team,

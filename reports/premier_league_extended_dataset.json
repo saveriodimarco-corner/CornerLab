@@ -1,0 +1,111 @@
+{
+  "run_type": "premier_league_extended_dataset",
+  "matches": 3880,
+  "advanced_rows": 3880,
+  "season_counts": {
+    "2016/17": 380,
+    "2017/18": 380,
+    "2018/19": 380,
+    "2019/20": 380,
+    "2020/21": 380,
+    "2021/22": 380,
+    "2022/23": 380,
+    "2023/24": 380,
+    "2024/25": 380,
+    "2025/26": 380,
+    "2026/27": 80
+  },
+  "sources": [
+    {
+      "season": "2016/17",
+      "url": "https://www.football-data.co.uk/mmz4281/1617/E0.csv",
+      "source_hash": "9625a7652b5f98fbd3e2e4d378c851fc246693f3343e34a72428d5b6e864d3e0",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.413157894736843
+    },
+    {
+      "season": "2017/18",
+      "url": "https://www.football-data.co.uk/mmz4281/1718/E0.csv",
+      "source_hash": "4f3389365ef3f7ac966764ed8ba67cf3b79f5aebed18dd224099c4b2c98bc67b",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.292105263157895
+    },
+    {
+      "season": "2018/19",
+      "url": "https://www.football-data.co.uk/mmz4281/1819/E0.csv",
+      "source_hash": "7c096b3c2ecd54c6993d22eeea73450c2bde11e3457238b226b8f43c62dfc35e",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.257894736842106
+    },
+    {
+      "season": "2019/20",
+      "url": "https://www.football-data.co.uk/mmz4281/1920/E0.csv",
+      "source_hash": "100037618b94f94057400bb02bf6bac4ef74ddaa58cde4b38370839c39caee61",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.705263157894738
+    },
+    {
+      "season": "2020/21",
+      "url": "https://www.football-data.co.uk/mmz4281/2021/E0.csv",
+      "source_hash": "5afe63f69401457b8354eaacee24f9a3e520b3c3af6329564a9783e20d789c62",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.189473684210526
+    },
+    {
+      "season": "2021/22",
+      "url": "https://www.football-data.co.uk/mmz4281/2122/E0.csv",
+      "source_hash": "335afcbabeb2939fa10ab39ba3e8215072d0b577cb8d0705c1e44c56e934e703",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.423684210526316
+    },
+    {
+      "season": "2022/23",
+      "url": "https://www.football-data.co.uk/mmz4281/2223/E0.csv",
+      "source_hash": "8442792d3b614c94ea3cf381bd2736805889cc1713169035368fff19c3d02380",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.107894736842105
+    },
+    {
+      "season": "2023/24",
+      "url": "https://www.football-data.co.uk/mmz4281/2324/E0.csv",
+      "source_hash": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.836842105263157
+    },
+    {
+      "season": "2024/25",
+      "url": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
+      "source_hash": "d0c8ce4a96d886cf60cf101f570f4a3893844226f91c7bd769eb568c49edbfa4",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 10.297368421052632
+    },
+    {
+      "season": "2025/26",
+      "url": "https://www.football-data.co.uk/mmz4281/2526/E0.csv",
+      "source_hash": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62",
+      "rows": 380,
+      "complete_rows": 380,
+      "mean_corners": 9.99736842105263
+    },
+    {
+      "season": "2026/27",
+      "url": "https://www.football-data.co.uk/mmz4281/2627/E0.csv",
+      "source_hash": "4cd9d41c75bdaafce0657cb97ce76438f8016605957af80896b60a0f21955ab2",
+      "rows": 80,
+      "complete_rows": 80,
+      "mean_corners": 9.425
+    }
+  ],
+  "matches_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/matches_extended.parquet",
+  "features_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/advanced_features_extended.parquet",
+  "production_writes": false
+}

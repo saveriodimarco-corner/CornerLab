@@ -12,10 +12,12 @@ from zoneinfo import ZoneInfo
 
 ROME = ZoneInfo("Europe/Rome")
 CACHE_MAX_AGE = timedelta(hours=84)
+LIVE_CACHE_MAX_AGE = timedelta(minutes=15)
 BASE_URL = "https://" + "www.football-data.co.uk/mmz4281"
 
 DIVISION_CODES = {
     "Serie A": "I1",
+    "Premier League": "E0",
 }
 
 TEAM_ALIASES = {
@@ -30,6 +32,26 @@ TEAM_ALIASES = {
     "atalanta": "atalanta",
     "hellas verona": "verona",
     "verona": "verona",
+    "brighton and hove albion": "brighton",
+    "brighton": "brighton",
+    "manchester city": "man city",
+    "man city": "man city",
+    "manchester united": "man united",
+    "man united": "man united",
+    "newcastle united": "newcastle",
+    "newcastle": "newcastle",
+    "nottingham forest": "nottingham forest",
+    "nott m forest": "nottingham forest",
+    "tottenham hotspur": "tottenham",
+    "tottenham": "tottenham",
+    "coventry city": "coventry",
+    "coventry": "coventry",
+    "hull city": "hull",
+    "hull": "hull",
+    "ipswich town": "ipswich",
+    "ipswich": "ipswich",
+    "leeds united": "leeds",
+    "leeds": "leeds",
 }
 
 
@@ -135,7 +157,11 @@ class FootballDataResultsProvider:
         cache_path = self.cache_dir / f"{season}_{division}.csv"
         return url, cache_path
 
-    def _cache_is_fresh(self, path: Path) -> bool:
+    def _cache_is_fresh(
+        self,
+        path: Path,
+        max_age: timedelta,
+    ) -> bool:
         if not path.exists():
             return False
 
@@ -143,7 +169,18 @@ class FootballDataResultsProvider:
             path.stat().st_mtime,
             timezone.utc,
         )
-        return self._now() - modified <= CACHE_MAX_AGE
+        current = self._now()
+
+        if current.tzinfo is None:
+            current = current.replace(
+                tzinfo=timezone.utc
+            )
+
+        return (
+            current.astimezone(timezone.utc)
+            - modified
+            <= max_age
+        )
 
     def _download(self, url: str) -> bytes:
         with self._opener(
@@ -156,8 +193,12 @@ class FootballDataResultsProvider:
         self,
         url: str,
         cache_path: Path,
+        max_age: timedelta,
     ) -> bytes:
-        if self._cache_is_fresh(cache_path):
+        if self._cache_is_fresh(
+            cache_path,
+            max_age,
+        ):
             return cache_path.read_bytes()
 
         try:
@@ -204,10 +245,29 @@ class FootballDataResultsProvider:
 
         url, cache_path = source
 
+        current = self._now()
+
+        if current.tzinfo is None:
+            current = current.replace(
+                tzinfo=timezone.utc
+            )
+
+        recent_fixture = (
+            kickoff
+            >= current.astimezone(timezone.utc)
+            - timedelta(days=7)
+        )
+        max_age = (
+            LIVE_CACHE_MAX_AGE
+            if recent_fixture
+            else CACHE_MAX_AGE
+        )
+
         try:
             content = self._load_content(
                 url,
                 cache_path,
+                max_age,
             )
         except FootballDataResultsError:
             return {

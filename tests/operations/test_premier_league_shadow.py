@@ -281,3 +281,36 @@ def test_default_paid_request_limit_is_enforced(
     assert _TwoEventAdapter.fetch_calls == [
         "epl-event-1"
     ]
+
+
+
+def test_premier_league_shadow_uses_season_label():
+    assert (
+        premier_league_shadow._season_label(
+            "2026-10-31T12:30:00Z"
+        )
+        == "2026/27"
+    )
+    assert (
+        premier_league_shadow._season_label(
+            "2027-02-01T20:00:00Z"
+        )
+        == "2026/27"
+    )
+
+    rows = premier_league_shadow._fixture_rows(
+        [
+            {
+                "id": "event-1",
+                "commence_time": (
+                    "2026-10-31T12:30:00Z"
+                ),
+                "home_team": "Chelsea",
+                "away_team": (
+                    "Manchester United"
+                ),
+            }
+        ]
+    )
+
+    assert rows[0]["season"] == "2026/27"

@@ -50,6 +50,21 @@ COMPETITION_SLUGS = {
     "premier league": "premier_league",
 }
 
+LIVE_TEAM_ALIASES = {
+    "AC Milan": "Milan",
+    "AS Roma": "Roma",
+    "Brighton and Hove Albion": "Brighton",
+    "Manchester City": "Man City",
+    "Manchester United": "Man United",
+    "Newcastle United": "Newcastle",
+    "Nottingham Forest": "Nott'm Forest",
+    "Tottenham Hotspur": "Tottenham",
+    "Coventry City": "Coventry",
+    "Hull City": "Hull",
+    "Ipswich Town": "Ipswich",
+    "Leeds United": "Leeds",
+}
+
 SYNTHETIC_OUTCOME_COLUMNS = {
     "total_corners",
     "over85",
@@ -373,11 +388,6 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
     # dataset. Without normalization the feature engine treats the
     # same club as a completely new team.
     # ------------------------------------------------------------
-    TEAM_ALIASES = {
-        "AC Milan": "Milan",
-        "AS Roma": "Roma",
-    }
-
     fixtures = fixtures.copy()
 
     for column in ["home_team", "away_team"]:
@@ -385,7 +395,7 @@ def build_live_research_features(historical_matches: pd.DataFrame, fixtures: pd.
             fixtures[column] = (
                 fixtures[column]
                 .astype(str)
-                .replace(TEAM_ALIASES)
+                .replace(LIVE_TEAM_ALIASES)
             )
 
     live_rows: list[pd.DataFrame] = []
@@ -1514,8 +1524,15 @@ def _latest_odds_observations(odds: pd.DataFrame) -> pd.DataFrame:
 
     return frame
 
-def _load_live_fixtures_and_odds(base_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    database_path = base_dir / "data" / "collector.sqlite"
+def _load_live_fixtures_and_odds(
+    base_dir: Path,
+    database_path: Path | str | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    database_path = (
+        Path(database_path)
+        if database_path is not None
+        else base_dir / "data" / "collector.sqlite"
+    )
     if not database_path.exists():
         raise FileNotFoundError(f"Collector database not found: {database_path}")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -48,8 +49,14 @@ class TheOddsApiProvider(BaseOddsProvider):
         self.odds_format = odds_format
         self.date_format = date_format
         self.timeout = timeout
-        self.retries = retries
-        self.rate_limit_backoff = rate_limit_backoff
+        self.retries = max(
+            0,
+            int(retries),
+        )
+        self.rate_limit_backoff = max(
+            0.0,
+            float(rate_limit_backoff),
+        )
         self.cache_dir = Path(cache_dir or Path("data/cache/the_odds_api"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.enable_disk_cache = enable_disk_cache
@@ -166,17 +173,93 @@ class TheOddsApiProvider(BaseOddsProvider):
         url = self._build_url(endpoint)
         headers: dict[str, Any] = {}
         request_params = self._prepare_request_params(params)
-        try:
-            result = self._perform_request(url, headers=headers, params=request_params)
-            if isinstance(result, tuple) and len(result) == 2:
-                payload, usage = result
-            else:
-                payload = result
-                usage = {}
-        except requests.HTTPError as exc:
-            raise RuntimeError(f"The Odds API request failed: {self._redact_sensitive(str(exc))}") from exc
-        except requests.RequestException as exc:
-            raise RuntimeError(f"The Odds API request failed: {self._redact_sensitive(str(exc))}") from exc
+        payload: Any = None
+        usage: dict[str, Any] = {}
+
+        for attempt in range(
+            self.retries + 1
+        ):
+            try:
+                result = self._perform_request(
+                    url,
+                    headers=headers,
+                    params=request_params,
+                )
+
+                if (
+                    isinstance(result, tuple)
+                    and len(result) == 2
+                ):
+                    payload, usage = result
+                else:
+                    payload = result
+                    usage = {}
+
+                break
+
+            except requests.HTTPError as exc:
+                response = exc.response
+                status = (
+                    response.status_code
+                    if response is not None
+                    else None
+                )
+                retryable = status in {
+                    429,
+                    500,
+                    502,
+                    503,
+                    504,
+                }
+
+                if (
+                    not retryable
+                    or attempt >= self.retries
+                ):
+                    raise RuntimeError(
+                        "The Odds API request "
+                        "failed: "
+                        f"{self._redact_sensitive(str(exc))}"
+                    ) from exc
+
+                delay = (
+                    self.rate_limit_backoff
+                    * (2 ** attempt)
+                )
+
+                if response is not None:
+                    retry_after = (
+                        response.headers.get(
+                            "Retry-After"
+                        )
+                    )
+
+                    try:
+                        delay = max(
+                            delay,
+                            float(retry_after),
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        pass
+
+                time.sleep(delay)
+
+            except requests.RequestException as exc:
+                if attempt >= self.retries:
+                    raise RuntimeError(
+                        "The Odds API request "
+                        "failed: "
+                        f"{self._redact_sensitive(str(exc))}"
+                    ) from exc
+
+                delay = (
+                    self.rate_limit_backoff
+                    * (2 ** attempt)
+                )
+                time.sleep(delay)
         self._usage = usage
         self._memory_cache[self._cache_key(endpoint, params)] = payload
         if self.enable_disk_cache:
