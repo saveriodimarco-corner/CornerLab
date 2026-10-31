@@ -164,3 +164,32 @@ are complete:
 7. complete a separate code and operational review;
 8. obtain explicit approval for real Telegram confirmations and bankroll
    access.
+
+## Current-season history and no-play notifications
+
+Each hourly Premier League pipeline refreshes the completed current-season
+E0 results before live scoring.
+
+New completed matches are appended incrementally to
+`matches_extended.parquet`. Existing fixture identifiers are preserved,
+result corrections update the existing row, and repeated runs are
+idempotent.
+
+This refresh updates only the historical inputs used to construct live
+features. It does not retrain, replace, or modify the frozen forward model.
+
+For each Premier League matchday, CornerLab also sends one informational
+Telegram message when:
+
+- no forward candidate satisfies the minimum requirements; or
+- every simulated price check for that matchday has been marked as skipped.
+
+The message is sent at most once per Rome calendar date, from six hours
+before the first remaining fixture. It contains no betting controls and is
+explicitly labelled `NON GIOCARE`.
+
+If any simulated check is still pending, the message waits. If any simulated
+bet was placed, the no-play message is not sent.
+
+Both features keep real Premier League betting and the real bankroll
+disabled.

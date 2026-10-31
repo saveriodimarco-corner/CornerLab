@@ -14,6 +14,9 @@ if str(REPO_ROOT) not in sys.path:
 from src.operations.premier_league_forward_notifier import (
     notify_forward_price_checks,
 )
+from src.operations.premier_league_non_play_notifier import (
+    notify_premier_non_play,
+)
 from src.operations.premier_league_forward_settlement import (
     run_forward_settlement,
 )
@@ -22,6 +25,9 @@ from src.operations.premier_league_shadow import (
 )
 from src.research.premier_league_forward_scoring import (
     run_forward_scoring,
+)
+from src.research.premier_league_history_sync import (
+    sync_current_season_history,
 )
 
 
@@ -37,11 +43,20 @@ def run_pipeline(
     settlement = run_forward_settlement(
         base_dir
     )
+    history_sync = sync_current_season_history(
+        base_dir
+    )
     scoring = run_forward_scoring(
         base_dir
     )
     notifications = (
         notify_forward_price_checks(
+            base_dir,
+            dry_run=False,
+        )
+    )
+    non_play_notifications = (
+        notify_premier_non_play(
             base_dir,
             dry_run=False,
         )
@@ -71,8 +86,12 @@ def run_pipeline(
             ]
         },
         "settlement": settlement,
+        "history_sync": history_sync,
         "scoring": scoring,
         "notifications": notifications,
+        "non_play_notifications": (
+            non_play_notifications
+        ),
         "real_betting_enabled": False,
         "bankroll_real_enabled": False,
     }
