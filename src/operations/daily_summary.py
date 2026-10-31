@@ -17,6 +17,7 @@ from src.operations.telegram_notifier import send_message
 
 ROME = ZoneInfo("Europe/Rome")
 SETTLED_STATUSES = {"SETTLED_WIN", "SETTLED_LOSS", "SETTLED_VOID"}
+SUMMARY_LOOKBACK_DAYS = 14
 
 
 def _state_path(base_dir: Path) -> Path:
@@ -292,30 +293,62 @@ def maybe_send_daily_summary(
     if now is None:
         now = datetime.now(timezone.utc)
 
-    target_date = now.astimezone(ROME).date().isoformat()
-
+    today = now.astimezone(ROME).date()
     state = _read_state(base_dir)
-    if target_date in set(str(item) for item in state.get("sent_dates", [])):
-        return {
-            "sent": False,
-            "reason": "already_sent",
-            "date": target_date,
-        }
+    sent_dates = {
+        str(item)
+        for item in state.get("sent_dates", [])
+    }
 
-    fixtures = _serie_a_fixtures_for_rome_date(base_dir, target_date)
-    if not fixtures:
-        return {
-            "sent": False,
-            "reason": "no_fixtures",
-            "date": target_date,
-        }
+    target_date: str | None = None
+    fixtures: list[dict[str, Any]] = []
 
-    fixture_ids = [str(item["fixture_id"]) for item in fixtures]
-    if not _daily_real_bets(base_dir, fixture_ids):
+    for days_ago in range(
+        SUMMARY_LOOKBACK_DAYS,
+        -1,
+        -1,
+    ):
+        candidate_date = (
+            today - timedelta(days=days_ago)
+        ).isoformat()
+
+        if candidate_date in sent_dates:
+            continue
+
+        candidate_fixtures = (
+            _serie_a_fixtures_for_rome_date(
+                base_dir,
+                candidate_date,
+            )
+        )
+        if not candidate_fixtures:
+            continue
+
+        candidate_fixture_ids = [
+            str(item["fixture_id"])
+            for item in candidate_fixtures
+        ]
+        if not _daily_real_bets(
+            base_dir,
+            candidate_fixture_ids,
+        ):
+            continue
+
+        target_date = candidate_date
+        fixtures = candidate_fixtures
+        break
+
+    if target_date is None:
+        today_value = today.isoformat()
+        reason = (
+            "already_sent"
+            if today_value in sent_dates
+            else "no_pending_summary"
+        )
         return {
             "sent": False,
-            "reason": "no_real_bets",
-            "date": target_date,
+            "reason": reason,
+            "date": today_value,
         }
 
     kickoffs = [
