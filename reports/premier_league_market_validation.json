@@ -1,0 +1,237 @@
+{
+  "run_type": "premier_league_market_validation",
+  "season": "2026/27",
+  "matches": 80,
+  "matches_with_historical_odds": 80,
+  "historical_odds_rows": 3532,
+  "reference_price": "median bookmaker price at kickoff minus 90 minutes",
+  "eligible_lines": [
+    "8.5",
+    "11.5"
+  ],
+  "online_calibration_settings": {
+    "window": 80,
+    "shrinkage": 0.5,
+    "minimum_history": 20
+  },
+  "model_hash": "09e3b39a663c41a303bbbd8e8a285098e49973c56d003d220b720443e3f7a4bd",
+  "mae": 2.603204242577948,
+  "bias": 0.39534805323747013,
+  "model_brier": 0.2306042000954663,
+  "market_brier": 0.22842691549362634,
+  "qualified_bet_summary": {
+    "bets": 6,
+    "wins": 4,
+    "losses": 2,
+    "hit_rate": 0.6666666666666666,
+    "profit_units": 0.24000000000000044,
+    "roi": 0.04000000000000007,
+    "roi_ci_95": [
+      -0.4850833333333332,
+      0.5633333333333335
+    ],
+    "average_odds": 1.5466666666666666,
+    "average_probability": 0.7339547342451741,
+    "average_expected_value": 0.13495773874869552,
+    "maximum_drawdown_units": 1.4649999999999999
+  },
+  "gates": {
+    "all_completed_matches_have_odds": true,
+    "walk_forward_without_same_day_leakage": true,
+    "absolute_bias_at_most_0_5": true,
+    "model_brier_better_than_market": false,
+    "at_least_30_qualified_bets": false,
+    "positive_roi": true,
+    "roi_at_least_3_percent": true,
+    "roi_lower_95_percent_above_zero": false
+  },
+  "market_validation_passed": false,
+  "calibration_trace": [
+    {
+      "date": "2026-08-21",
+      "prior_residuals": 0,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 1
+    },
+    {
+      "date": "2026-08-22",
+      "prior_residuals": 1,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 5
+    },
+    {
+      "date": "2026-08-23",
+      "prior_residuals": 6,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 3
+    },
+    {
+      "date": "2026-08-24",
+      "prior_residuals": 9,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 1
+    },
+    {
+      "date": "2026-08-28",
+      "prior_residuals": 10,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 1
+    },
+    {
+      "date": "2026-08-29",
+      "prior_residuals": 11,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 4
+    },
+    {
+      "date": "2026-08-30",
+      "prior_residuals": 15,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 4
+    },
+    {
+      "date": "2026-08-31",
+      "prior_residuals": 19,
+      "raw_bias_offset": 0.0,
+      "applied_correction": 0.0,
+      "matches": 1
+    },
+    {
+      "date": "2026-09-04",
+      "prior_residuals": 20,
+      "raw_bias_offset": 1.0692441833735764,
+      "applied_correction": 0.5346220916867882,
+      "matches": 1
+    },
+    {
+      "date": "2026-09-05",
+      "prior_residuals": 21,
+      "raw_bias_offset": 1.1603738902168959,
+      "applied_correction": 0.5801869451084479,
+      "matches": 7
+    },
+    {
+      "date": "2026-09-06",
+      "prior_residuals": 28,
+      "raw_bias_offset": 1.200108162474366,
+      "applied_correction": 0.600054081237183,
+      "matches": 2
+    },
+    {
+      "date": "2026-09-12",
+      "prior_residuals": 30,
+      "raw_bias_offset": 1.2926297079939928,
+      "applied_correction": 0.6463148539969964,
+      "matches": 7
+    },
+    {
+      "date": "2026-09-13",
+      "prior_residuals": 37,
+      "raw_bias_offset": 1.2653945159821358,
+      "applied_correction": 0.6326972579910679,
+      "matches": 2
+    },
+    {
+      "date": "2026-09-14",
+      "prior_residuals": 39,
+      "raw_bias_offset": 1.1771624830005345,
+      "applied_correction": 0.5885812415002672,
+      "matches": 1
+    },
+    {
+      "date": "2026-09-18",
+      "prior_residuals": 40,
+      "raw_bias_offset": 1.1542287400668947,
+      "applied_correction": 0.5771143700334473,
+      "matches": 1
+    },
+    {
+      "date": "2026-09-19",
+      "prior_residuals": 41,
+      "raw_bias_offset": 0.9838155173050742,
+      "applied_correction": 0.4919077586525371,
+      "matches": 5
+    },
+    {
+      "date": "2026-09-20",
+      "prior_residuals": 46,
+      "raw_bias_offset": 0.8973973107858736,
+      "applied_correction": 0.4486986553929368,
+      "matches": 4
+    },
+    {
+      "date": "2026-10-10",
+      "prior_residuals": 50,
+      "raw_bias_offset": 0.8410432489679615,
+      "applied_correction": 0.4205216244839807,
+      "matches": 6
+    },
+    {
+      "date": "2026-10-11",
+      "prior_residuals": 56,
+      "raw_bias_offset": 1.0295368667943368,
+      "applied_correction": 0.5147684333971684,
+      "matches": 3
+    },
+    {
+      "date": "2026-10-12",
+      "prior_residuals": 59,
+      "raw_bias_offset": 0.859550358529582,
+      "applied_correction": 0.429775179264791,
+      "matches": 1
+    },
+    {
+      "date": "2026-10-17",
+      "prior_residuals": 60,
+      "raw_bias_offset": 0.8811381383746267,
+      "applied_correction": 0.44056906918731337,
+      "matches": 5
+    },
+    {
+      "date": "2026-10-18",
+      "prior_residuals": 65,
+      "raw_bias_offset": 0.8335734631333273,
+      "applied_correction": 0.4167867315666636,
+      "matches": 4
+    },
+    {
+      "date": "2026-10-19",
+      "prior_residuals": 69,
+      "raw_bias_offset": 0.793137434684953,
+      "applied_correction": 0.3965687173424765,
+      "matches": 1
+    },
+    {
+      "date": "2026-10-23",
+      "prior_residuals": 70,
+      "raw_bias_offset": 0.816512064498978,
+      "applied_correction": 0.408256032249489,
+      "matches": 1
+    },
+    {
+      "date": "2026-10-24",
+      "prior_residuals": 71,
+      "raw_bias_offset": 0.8750375224547347,
+      "applied_correction": 0.4375187612273673,
+      "matches": 4
+    },
+    {
+      "date": "2026-10-25",
+      "prior_residuals": 75,
+      "raw_bias_offset": 0.7524836569469702,
+      "applied_correction": 0.3762418284734851,
+      "matches": 5
+    }
+  ],
+  "production_database_writes": false,
+  "model_artifact_modified": false,
+  "real_betting_enabled": false,
+  "bankroll_real_enabled": false
+}

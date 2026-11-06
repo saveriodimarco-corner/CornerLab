@@ -1,0 +1,35 @@
+{
+  "automatic_promotion": false,
+  "bankroll_real_enabled": false,
+  "decision": "NOT_READY",
+  "failed_gates": [
+    "historical_market_validation_passed",
+    "historical_model_beats_market",
+    "historical_roi_positive",
+    "forward_minimum_qualified_bets",
+    "forward_roi_positive"
+  ],
+  "forward_observations": 60,
+  "forward_profit_units": 0.0,
+  "forward_qualified_bets": 0,
+  "forward_roi": null,
+  "forward_settled_observations": 40,
+  "forward_wins": 0,
+  "gates": {
+    "forward_minimum_qualified_bets": false,
+    "forward_roi_positive": false,
+    "forward_settlement_operational": true,
+    "historical_market_validation_passed": false,
+    "historical_model_beats_market": false,
+    "historical_roi_positive": false,
+    "safety_contract_intact": true
+  },
+  "historical_market_brier": 0.21904863343684008,
+  "historical_matches": 460,
+  "historical_model_brier": 0.22237216127251522,
+  "historical_qualified_bets": 20,
+  "historical_roi": -0.14849999999999994,
+  "promotion_eligible": false,
+  "real_betting_enabled": false,
+  "run_type": "premier_league_readiness"
+}

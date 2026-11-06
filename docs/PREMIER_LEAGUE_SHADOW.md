@@ -193,3 +193,25 @@ bet was placed, the no-play message is not sent.
 
 Both features keep real Premier League betting and the real bankroll
 disabled.
+
+## Market-aware readiness result
+
+The accelerated validation used 460 strictly walk-forward Premier League
+matches from 2025/26 and 2026/27, with 15,610 historical corner prices
+captured 90 minutes before kickoff.
+
+The model did not pass promotion:
+
+- model Brier: 0.22237;
+- de-vigged market Brier: 0.21905;
+- qualified historical bets: 20;
+- historical flat-stake ROI: -14.85%;
+- optimal model weight against the market: 0%;
+- qualified forward bets after all production gates: 0.
+
+Raw positive edge is not sufficient. A play must also pass probability,
+price, EV, quality, and minimum-price gates.
+
+Premier League real betting and the real bankroll remain disabled. Promotion
+is never automatic: even after every statistical gate passes, a separate
+explicit approval and a small-stake rollout are required.

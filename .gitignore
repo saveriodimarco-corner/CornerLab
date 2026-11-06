@@ -282,3 +282,9 @@ data/paper_trading/run_history.jsonl
 /reports/premier_league_forward_current.json
 /reports/premier_league_forward_current.csv
 /reports/premier_league_forward_settlement_latest.json
+/reports/*.status
+/reports/*.log
+/reports/premier_league_market_validation_candidates.csv
+/reports/premier_league_market_validation_bets.csv
+/reports/premier_league_multiseason_candidates.csv
+/reports/premier_league_multiseason_bets.csv
