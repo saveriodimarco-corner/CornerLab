@@ -18,7 +18,7 @@ def _candidate_rows() -> pd.DataFrame:
     rows = []
     probabilities = {
         "2024/25": [0.90, 0.10],
-        "2025/26": [0.10, 0.90],
+        "2025/26": [0.90, 0.10],
         "2026/27": [0.70, 0.30],
     }
 
@@ -81,6 +81,26 @@ def test_analysis_keeps_future_seasons_separate():
         "real_betting_enabled"
     ] is False
     assert result["automatic_promotion"] is False
+    assert (
+        result["season_results"]["2025/26"]
+        ["qualified_bet_summary"]["roi"]
+        > 0.0
+    )
+    assert (
+        result["gates"]
+        ["validation_at_least_10_qualified_bets"]
+        is False
+    )
+    assert (
+        result["gates"]
+        ["validation_roi_positive"]
+        is False
+    )
+    assert (
+        result["gates"]
+        ["validation_roi_lower_95_percent_above_zero"]
+        is False
+    )
     assert len(candidates) == 12
     assert isinstance(bets, pd.DataFrame)
 

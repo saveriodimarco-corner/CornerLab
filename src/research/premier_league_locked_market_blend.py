@@ -380,6 +380,9 @@ def analyze_locked_market_blend(
     validation_bets = validation[
         "qualified_bet_summary"
     ]
+    minimum_validation_sample = (
+        validation_bets["bets"] >= 10
+    )
     gates = {
         "weight_selected_on_development_only": True,
         "validation_blend_brier_better_than_market": (
@@ -391,14 +394,16 @@ def analyze_locked_market_blend(
             <= validation["model_brier"]
         ),
         "validation_at_least_10_qualified_bets": (
-            validation_bets["bets"] >= 10
+            minimum_validation_sample
         ),
         "validation_roi_positive": (
-            validation_bets["roi"] is not None
+            minimum_validation_sample
+            and validation_bets["roi"] is not None
             and validation_bets["roi"] > 0.0
         ),
         "validation_roi_lower_95_percent_above_zero": (
-            validation_bets["roi_ci_95"][0]
+            minimum_validation_sample
+            and validation_bets["roi_ci_95"][0]
             is not None
             and validation_bets["roi_ci_95"][0]
             > 0.0

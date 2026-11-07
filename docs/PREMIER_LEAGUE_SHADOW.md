@@ -240,3 +240,20 @@ betting, automatic promotion, and use of the real bankroll remain disabled.
 The historical backfill consumed 8,649 subscription credits and left 11,227
 credits available at completion. No further historical API backfill is
 currently authorized or required.
+
+## Locked market-blend experiment
+
+A single market-blend weight was selected using only the 2024/25 development
+season. The selected blend uses 80% model probability and 20% no-vig market
+probability.
+
+On the independent 2025/26 validation season, the blend improved the raw
+model Brier score from 0.220639 to 0.219568, but did not beat the market
+score of 0.217074. Only one selection passed the decision policy, which is
+insufficient for ROI inference.
+
+On the separate 2026/27 observation period, four selections produced
+-22.75% ROI. The locked experiment therefore failed its validation gates.
+
+The experiment does not modify the production model and cannot enable real
+betting, automatic promotion, or use of the real bankroll.

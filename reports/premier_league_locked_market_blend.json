@@ -1,0 +1,204 @@
+{
+  "run_type": "premier_league_locked_market_blend",
+  "design": {
+    "development_season": "2024/25",
+    "validation_season": "2025/26",
+    "observation_season": "2026/27",
+    "selection_metric": "minimum development Brier score",
+    "tie_break": "lowest model weight",
+    "future_data_used_for_weight_selection": false
+  },
+  "model_weights_evaluated": [
+    0.0,
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95,
+    1.0
+  ],
+  "selected_model_weight": 0.8,
+  "selected_market_weight": 0.19999999999999996,
+  "development_weight_grid": [
+    {
+      "model_weight": 0.0,
+      "development_brier": 0.21347989259144398
+    },
+    {
+      "model_weight": 0.05,
+      "development_brier": 0.21316342428725665
+    },
+    {
+      "model_weight": 0.1,
+      "development_brier": 0.21286731459053893
+    },
+    {
+      "model_weight": 0.15,
+      "development_brier": 0.21259156350129077
+    },
+    {
+      "model_weight": 0.2,
+      "development_brier": 0.21233617101951222
+    },
+    {
+      "model_weight": 0.25,
+      "development_brier": 0.2121011371452032
+    },
+    {
+      "model_weight": 0.3,
+      "development_brier": 0.2118864618783638
+    },
+    {
+      "model_weight": 0.35,
+      "development_brier": 0.2116921452189939
+    },
+    {
+      "model_weight": 0.4,
+      "development_brier": 0.21151818716709364
+    },
+    {
+      "model_weight": 0.45,
+      "development_brier": 0.21136458772266295
+    },
+    {
+      "model_weight": 0.5,
+      "development_brier": 0.2112313468857018
+    },
+    {
+      "model_weight": 0.55,
+      "development_brier": 0.21111846465621026
+    },
+    {
+      "model_weight": 0.6,
+      "development_brier": 0.21102594103418829
+    },
+    {
+      "model_weight": 0.65,
+      "development_brier": 0.21095377601963583
+    },
+    {
+      "model_weight": 0.7,
+      "development_brier": 0.21090196961255303
+    },
+    {
+      "model_weight": 0.75,
+      "development_brier": 0.21087052181293983
+    },
+    {
+      "model_weight": 0.8,
+      "development_brier": 0.2108594326207961
+    },
+    {
+      "model_weight": 0.85,
+      "development_brier": 0.210868702036122
+    },
+    {
+      "model_weight": 0.9,
+      "development_brier": 0.21089833005891748
+    },
+    {
+      "model_weight": 0.95,
+      "development_brier": 0.2109483166891825
+    },
+    {
+      "model_weight": 1.0,
+      "development_brier": 0.21101866192691712
+    }
+  ],
+  "season_results": {
+    "2024/25": {
+      "binary_observations": 760,
+      "model_brier": 0.21101866192691712,
+      "market_brier": 0.21347989259144398,
+      "locked_blend_brier": 0.2108594326207961,
+      "qualified_bet_summary": {
+        "bets": 3,
+        "wins": 3,
+        "losses": 0,
+        "hit_rate": 1.0,
+        "profit_units": 1.7800000000000002,
+        "roi": 0.5933333333333334,
+        "roi_ci_95": [
+          0.5700000000000001,
+          0.6200000000000001
+        ],
+        "average_odds": 1.5933333333333335,
+        "average_probability": 0.7091020092814787,
+        "average_expected_value": 0.12980118827818532,
+        "maximum_drawdown_units": 0.0
+      }
+    },
+    "2025/26": {
+      "binary_observations": 760,
+      "model_brier": 0.22063910046768342,
+      "market_brier": 0.2170742582669903,
+      "locked_blend_brier": 0.21956824186036783,
+      "qualified_bet_summary": {
+        "bets": 1,
+        "wins": 1,
+        "losses": 0,
+        "hit_rate": 1.0,
+        "profit_units": 0.5900000000000001,
+        "roi": 0.5900000000000001,
+        "roi_ci_95": [
+          0.5900000000000001,
+          0.5900000000000001
+        ],
+        "average_odds": 1.59,
+        "average_probability": 0.7073245081409189,
+        "average_expected_value": 0.12464596794406102,
+        "maximum_drawdown_units": 0.0
+      }
+    },
+    "2026/27": {
+      "binary_observations": 160,
+      "model_brier": 0.2306042000954663,
+      "market_brier": 0.22842691549362631,
+      "locked_blend_brier": 0.22964537931854095,
+      "qualified_bet_summary": {
+        "bets": 4,
+        "wins": 2,
+        "losses": 2,
+        "hit_rate": 0.5,
+        "profit_units": -0.9099999999999999,
+        "roi": -0.22749999999999998,
+        "roi_ci_95": [
+          -1.0,
+          0.545
+        ],
+        "average_odds": 1.5325,
+        "average_probability": 0.7135015228325234,
+        "average_expected_value": 0.0933572755291815,
+        "maximum_drawdown_units": 1.4449999999999998
+      }
+    }
+  },
+  "gates": {
+    "weight_selected_on_development_only": true,
+    "validation_blend_brier_better_than_market": false,
+    "validation_blend_brier_not_worse_than_model": true,
+    "validation_at_least_10_qualified_bets": false,
+    "validation_roi_positive": false,
+    "validation_roi_lower_95_percent_above_zero": false
+  },
+  "experiment_passed": false,
+  "production_database_writes": false,
+  "model_artifact_modified": false,
+  "real_betting_enabled": false,
+  "bankroll_real_enabled": false,
+  "automatic_promotion": false
+}
