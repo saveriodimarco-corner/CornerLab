@@ -215,3 +215,28 @@ price, EV, quality, and minimum-price gates.
 Premier League real betting and the real bankroll remain disabled. Promotion
 is never automatic: even after every statistical gate passes, a separate
 explicit approval and a small-stake rollout are required.
+
+## Three-season historical market validation
+
+Historical corner-market coverage now contains 840 completed matches:
+
+- 380 matches from 2024/25;
+- 380 matches from 2025/26;
+- 80 matches from 2026/27.
+
+The dataset contains 28,004 normalized historical odds rows. Walk-forward
+predictions use only seasons and observations available before each match.
+
+The combined model Brier score is 0.217236, compared with 0.216529 for the
+market. The 43 qualified historical selections produced 1.215 units of
+profit and 2.83% ROI, with a 95% ROI interval from -19.69% to 24.95%.
+
+Results are not stable across seasons: 2024/25 returned 18.20%, 2025/26
+returned -22.93%, and the first 80 matches of 2026/27 returned 4.00%.
+
+The formal readiness decision remains `NOT_READY`. Real Premier League
+betting, automatic promotion, and use of the real bankroll remain disabled.
+
+The historical backfill consumed 8,649 subscription credits and left 11,227
+credits available at completion. No further historical API backfill is
+currently authorized or required.

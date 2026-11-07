@@ -208,3 +208,6 @@ def test_historical_team_aliases():
     assert _team_key(
         "Wolverhampton Wanderers"
     ) == _team_key("Wolves")
+    assert _team_key("Leicester City") == (
+        _team_key("Leicester")
+    )

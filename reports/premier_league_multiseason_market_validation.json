@@ -1,12 +1,13 @@
 {
   "run_type": "premier_league_multiseason_market_validation",
   "evaluation_seasons": [
+    "2024/25",
     "2025/26",
     "2026/27"
   ],
-  "matches": 460,
-  "matches_with_odds": 460,
-  "historical_odds_rows": 15610,
+  "matches": 840,
+  "matches_with_odds": 840,
+  "historical_odds_rows": 28004,
   "reference_price": "median bookmaker price at kickoff minus 90 minutes",
   "model": "poisson_alpha_10",
   "eligible_lines": [
@@ -18,25 +19,48 @@
     "shrinkage": 0.5,
     "minimum_history": 20
   },
-  "model_brier": 0.22237216127251522,
-  "market_brier": 0.21904863343684008,
+  "model_brier": 0.21723605442569702,
+  "market_brier": 0.21652944114963704,
   "qualified_bet_summary": {
-    "bets": 20,
-    "wins": 11,
-    "losses": 9,
-    "hit_rate": 0.55,
-    "profit_units": -2.969999999999999,
-    "roi": -0.14849999999999994,
+    "bets": 43,
+    "wins": 28,
+    "losses": 15,
+    "hit_rate": 0.6511627906976745,
+    "profit_units": 1.215000000000001,
+    "roi": 0.028255813953488394,
     "roi_ci_95": [
-      -0.46349999999999997,
-      0.16750625000000002
+      -0.1968633720930233,
+      0.24953488372093025
     ],
-    "average_odds": 1.5445,
-    "average_probability": 0.7217800812866606,
-    "average_expected_value": 0.11468543564472973,
-    "maximum_drawdown_units": 4.13
+    "average_odds": 1.5777906976744185,
+    "average_probability": 0.7186933873282202,
+    "average_expected_value": 0.1337373452941746,
+    "maximum_drawdown_units": 4.969999999999999
   },
   "season_results": {
+    "2024/25": {
+      "matches": 380,
+      "mae": 2.742117245717646,
+      "bias": 0.0833118649848174,
+      "model_brier": 0.21101866192691712,
+      "market_brier": 0.21347989259144398,
+      "qualified_bet_summary": {
+        "bets": 23,
+        "wins": 17,
+        "losses": 6,
+        "hit_rate": 0.7391304347826086,
+        "profit_units": 4.185000000000002,
+        "roi": 0.18195652173913054,
+        "roi_ci_95": [
+          -0.10499999999999994,
+          0.4580434782608695
+        ],
+        "average_odds": 1.606739130434783,
+        "average_probability": 0.7160093056252288,
+        "average_expected_value": 0.15030422325021367,
+        "maximum_drawdown_units": 2.0
+      }
+    },
     "2025/26": {
       "matches": 380,
       "mae": 2.6425164969221644,
@@ -85,19 +109,784 @@
     }
   },
   "gates": {
-    "all_460_matches_have_odds": true,
+    "all_840_matches_have_odds": true,
     "strict_walk_forward_training": true,
     "bias_at_most_0_5_each_season": true,
     "combined_model_brier_better_than_market": false,
     "model_not_materially_worse_each_season": true,
-    "at_least_30_qualified_bets": false,
-    "positive_roi": false,
+    "at_least_30_qualified_bets": true,
+    "positive_roi": true,
     "roi_at_least_3_percent": false,
     "roi_lower_95_percent_above_zero": false,
     "positive_roi_each_season": false
   },
   "market_validation_passed": false,
   "calibration_trace": {
+    "2024/25": [
+      {
+        "date": "2024-08-16",
+        "prior_residuals": 0,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 1
+      },
+      {
+        "date": "2024-08-17",
+        "prior_residuals": 1,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 6
+      },
+      {
+        "date": "2024-08-18",
+        "prior_residuals": 7,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 2
+      },
+      {
+        "date": "2024-08-19",
+        "prior_residuals": 9,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 1
+      },
+      {
+        "date": "2024-08-24",
+        "prior_residuals": 10,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 7
+      },
+      {
+        "date": "2024-08-25",
+        "prior_residuals": 17,
+        "raw_bias_offset": 0.0,
+        "applied_correction": 0.0,
+        "matches": 3
+      },
+      {
+        "date": "2024-08-31",
+        "prior_residuals": 20,
+        "raw_bias_offset": -0.5741400199120503,
+        "applied_correction": -0.28707000995602516,
+        "matches": 7
+      },
+      {
+        "date": "2024-09-01",
+        "prior_residuals": 27,
+        "raw_bias_offset": -0.49911734949233494,
+        "applied_correction": -0.24955867474616747,
+        "matches": 3
+      },
+      {
+        "date": "2024-09-14",
+        "prior_residuals": 30,
+        "raw_bias_offset": -0.577828720349283,
+        "applied_correction": -0.2889143601746415,
+        "matches": 8
+      },
+      {
+        "date": "2024-09-15",
+        "prior_residuals": 38,
+        "raw_bias_offset": -0.11607787870231863,
+        "applied_correction": -0.058038939351159315,
+        "matches": 2
+      },
+      {
+        "date": "2024-09-21",
+        "prior_residuals": 40,
+        "raw_bias_offset": -0.17962095092670216,
+        "applied_correction": -0.08981047546335108,
+        "matches": 8
+      },
+      {
+        "date": "2024-09-22",
+        "prior_residuals": 48,
+        "raw_bias_offset": -0.21298362302465582,
+        "applied_correction": -0.10649181151232791,
+        "matches": 2
+      },
+      {
+        "date": "2024-09-28",
+        "prior_residuals": 50,
+        "raw_bias_offset": -0.1870896542835678,
+        "applied_correction": -0.0935448271417839,
+        "matches": 7
+      },
+      {
+        "date": "2024-09-29",
+        "prior_residuals": 57,
+        "raw_bias_offset": -0.43264575159878554,
+        "applied_correction": -0.21632287579939277,
+        "matches": 2
+      },
+      {
+        "date": "2024-09-30",
+        "prior_residuals": 59,
+        "raw_bias_offset": -0.37138680956958336,
+        "applied_correction": -0.18569340478479168,
+        "matches": 1
+      },
+      {
+        "date": "2024-10-05",
+        "prior_residuals": 60,
+        "raw_bias_offset": -0.3714918269665741,
+        "applied_correction": -0.18574591348328706,
+        "matches": 7
+      },
+      {
+        "date": "2024-10-06",
+        "prior_residuals": 67,
+        "raw_bias_offset": -0.3961101265027534,
+        "applied_correction": -0.1980550632513767,
+        "matches": 3
+      },
+      {
+        "date": "2024-10-19",
+        "prior_residuals": 70,
+        "raw_bias_offset": -0.42545947621793945,
+        "applied_correction": -0.21272973810896972,
+        "matches": 7
+      },
+      {
+        "date": "2024-10-20",
+        "prior_residuals": 77,
+        "raw_bias_offset": -0.7139023927397166,
+        "applied_correction": -0.3569511963698583,
+        "matches": 2
+      },
+      {
+        "date": "2024-10-21",
+        "prior_residuals": 79,
+        "raw_bias_offset": -0.7632343389367626,
+        "applied_correction": -0.3816171694683813,
+        "matches": 1
+      },
+      {
+        "date": "2024-10-25",
+        "prior_residuals": 80,
+        "raw_bias_offset": -0.7717742190618743,
+        "applied_correction": -0.38588710953093713,
+        "matches": 1
+      },
+      {
+        "date": "2024-10-26",
+        "prior_residuals": 81,
+        "raw_bias_offset": -0.746960725896304,
+        "applied_correction": -0.373480362948152,
+        "matches": 5
+      },
+      {
+        "date": "2024-10-27",
+        "prior_residuals": 86,
+        "raw_bias_offset": -0.8371606501432103,
+        "applied_correction": -0.41858032507160514,
+        "matches": 4
+      },
+      {
+        "date": "2024-11-02",
+        "prior_residuals": 90,
+        "raw_bias_offset": -0.8435302925039878,
+        "applied_correction": -0.4217651462519939,
+        "matches": 7
+      },
+      {
+        "date": "2024-11-03",
+        "prior_residuals": 97,
+        "raw_bias_offset": -0.9829876360669442,
+        "applied_correction": -0.4914938180334721,
+        "matches": 2
+      },
+      {
+        "date": "2024-11-04",
+        "prior_residuals": 99,
+        "raw_bias_offset": -0.8785815754360691,
+        "applied_correction": -0.43929078771803454,
+        "matches": 1
+      },
+      {
+        "date": "2024-11-09",
+        "prior_residuals": 100,
+        "raw_bias_offset": -0.9246545784409849,
+        "applied_correction": -0.46232728922049243,
+        "matches": 6
+      },
+      {
+        "date": "2024-11-10",
+        "prior_residuals": 106,
+        "raw_bias_offset": -0.8574943613385573,
+        "applied_correction": -0.42874718066927864,
+        "matches": 4
+      },
+      {
+        "date": "2024-11-23",
+        "prior_residuals": 110,
+        "raw_bias_offset": -0.681660219258612,
+        "applied_correction": -0.340830109629306,
+        "matches": 7
+      },
+      {
+        "date": "2024-11-24",
+        "prior_residuals": 117,
+        "raw_bias_offset": -0.7834520163618262,
+        "applied_correction": -0.3917260081809131,
+        "matches": 2
+      },
+      {
+        "date": "2024-11-25",
+        "prior_residuals": 119,
+        "raw_bias_offset": -0.7816472427923377,
+        "applied_correction": -0.39082362139616883,
+        "matches": 1
+      },
+      {
+        "date": "2024-11-29",
+        "prior_residuals": 120,
+        "raw_bias_offset": -0.7806877010000324,
+        "applied_correction": -0.3903438505000162,
+        "matches": 1
+      },
+      {
+        "date": "2024-11-30",
+        "prior_residuals": 121,
+        "raw_bias_offset": -0.8010671302809094,
+        "applied_correction": -0.4005335651404547,
+        "matches": 5
+      },
+      {
+        "date": "2024-12-01",
+        "prior_residuals": 126,
+        "raw_bias_offset": -0.8900459941888357,
+        "applied_correction": -0.44502299709441784,
+        "matches": 4
+      },
+      {
+        "date": "2024-12-03",
+        "prior_residuals": 130,
+        "raw_bias_offset": -0.8513164431232468,
+        "applied_correction": -0.4256582215616234,
+        "matches": 2
+      },
+      {
+        "date": "2024-12-04",
+        "prior_residuals": 132,
+        "raw_bias_offset": -0.7494741753880668,
+        "applied_correction": -0.3747370876940334,
+        "matches": 6
+      },
+      {
+        "date": "2024-12-05",
+        "prior_residuals": 138,
+        "raw_bias_offset": -0.7525628583590189,
+        "applied_correction": -0.37628142917950946,
+        "matches": 2
+      },
+      {
+        "date": "2024-12-07",
+        "prior_residuals": 140,
+        "raw_bias_offset": -0.8249661387114446,
+        "applied_correction": -0.4124830693557223,
+        "matches": 4
+      },
+      {
+        "date": "2024-12-08",
+        "prior_residuals": 144,
+        "raw_bias_offset": -0.7823980598014544,
+        "applied_correction": -0.3911990299007272,
+        "matches": 4
+      },
+      {
+        "date": "2024-12-09",
+        "prior_residuals": 148,
+        "raw_bias_offset": -0.9131918154446226,
+        "applied_correction": -0.4565959077223113,
+        "matches": 1
+      },
+      {
+        "date": "2024-12-14",
+        "prior_residuals": 149,
+        "raw_bias_offset": -0.9072680797749694,
+        "applied_correction": -0.4536340398874847,
+        "matches": 5
+      },
+      {
+        "date": "2024-12-15",
+        "prior_residuals": 154,
+        "raw_bias_offset": -0.6231334024790041,
+        "applied_correction": -0.31156670123950203,
+        "matches": 4
+      },
+      {
+        "date": "2024-12-16",
+        "prior_residuals": 158,
+        "raw_bias_offset": -0.48627886406438553,
+        "applied_correction": -0.24313943203219276,
+        "matches": 1
+      },
+      {
+        "date": "2024-12-21",
+        "prior_residuals": 159,
+        "raw_bias_offset": -0.47097688429171375,
+        "applied_correction": -0.23548844214585687,
+        "matches": 5
+      },
+      {
+        "date": "2024-12-22",
+        "prior_residuals": 164,
+        "raw_bias_offset": -0.2025379268985744,
+        "applied_correction": -0.1012689634492872,
+        "matches": 5
+      },
+      {
+        "date": "2024-12-26",
+        "prior_residuals": 169,
+        "raw_bias_offset": -0.2258062031984128,
+        "applied_correction": -0.1129031015992064,
+        "matches": 8
+      },
+      {
+        "date": "2024-12-27",
+        "prior_residuals": 177,
+        "raw_bias_offset": 0.02211972575419461,
+        "applied_correction": 0.011059862877097305,
+        "matches": 2
+      },
+      {
+        "date": "2024-12-29",
+        "prior_residuals": 179,
+        "raw_bias_offset": 0.12061889867793407,
+        "applied_correction": 0.060309449338967036,
+        "matches": 6
+      },
+      {
+        "date": "2024-12-30",
+        "prior_residuals": 185,
+        "raw_bias_offset": 0.12844690725917865,
+        "applied_correction": 0.06422345362958932,
+        "matches": 3
+      },
+      {
+        "date": "2025-01-01",
+        "prior_residuals": 188,
+        "raw_bias_offset": 0.01580712156656001,
+        "applied_correction": 0.007903560783280006,
+        "matches": 1
+      },
+      {
+        "date": "2025-01-04",
+        "prior_residuals": 189,
+        "raw_bias_offset": 0.03478182120426228,
+        "applied_correction": 0.01739091060213114,
+        "matches": 7
+      },
+      {
+        "date": "2025-01-05",
+        "prior_residuals": 196,
+        "raw_bias_offset": 0.06433713889745582,
+        "applied_correction": 0.03216856944872791,
+        "matches": 2
+      },
+      {
+        "date": "2025-01-06",
+        "prior_residuals": 198,
+        "raw_bias_offset": -0.029290669819363836,
+        "applied_correction": -0.014645334909681918,
+        "matches": 1
+      },
+      {
+        "date": "2025-01-14",
+        "prior_residuals": 199,
+        "raw_bias_offset": 0.029015889951827578,
+        "applied_correction": 0.014507944975913789,
+        "matches": 4
+      },
+      {
+        "date": "2025-01-15",
+        "prior_residuals": 203,
+        "raw_bias_offset": 0.2211283172427337,
+        "applied_correction": 0.11056415862136686,
+        "matches": 4
+      },
+      {
+        "date": "2025-01-16",
+        "prior_residuals": 207,
+        "raw_bias_offset": 0.21385253649838357,
+        "applied_correction": 0.10692626824919178,
+        "matches": 2
+      },
+      {
+        "date": "2025-01-18",
+        "prior_residuals": 209,
+        "raw_bias_offset": 0.16744595584486102,
+        "applied_correction": 0.08372297792243051,
+        "matches": 5
+      },
+      {
+        "date": "2025-01-19",
+        "prior_residuals": 214,
+        "raw_bias_offset": 0.32835640014175393,
+        "applied_correction": 0.16417820007087697,
+        "matches": 4
+      },
+      {
+        "date": "2025-01-20",
+        "prior_residuals": 218,
+        "raw_bias_offset": 0.34409568804485025,
+        "applied_correction": 0.17204784402242512,
+        "matches": 1
+      },
+      {
+        "date": "2025-01-25",
+        "prior_residuals": 219,
+        "raw_bias_offset": 0.40400969985491003,
+        "applied_correction": 0.20200484992745502,
+        "matches": 6
+      },
+      {
+        "date": "2025-01-26",
+        "prior_residuals": 225,
+        "raw_bias_offset": 0.5071910180262776,
+        "applied_correction": 0.2535955090131388,
+        "matches": 4
+      },
+      {
+        "date": "2025-02-01",
+        "prior_residuals": 229,
+        "raw_bias_offset": 0.7969179745582634,
+        "applied_correction": 0.3984589872791317,
+        "matches": 6
+      },
+      {
+        "date": "2025-02-02",
+        "prior_residuals": 235,
+        "raw_bias_offset": 0.8082676100278047,
+        "applied_correction": 0.40413380501390234,
+        "matches": 3
+      },
+      {
+        "date": "2025-02-03",
+        "prior_residuals": 238,
+        "raw_bias_offset": 0.7799818096656115,
+        "applied_correction": 0.38999090483280574,
+        "matches": 1
+      },
+      {
+        "date": "2025-02-12",
+        "prior_residuals": 239,
+        "raw_bias_offset": 0.9158721107795254,
+        "applied_correction": 0.4579360553897627,
+        "matches": 1
+      },
+      {
+        "date": "2025-02-14",
+        "prior_residuals": 240,
+        "raw_bias_offset": 0.9637076904866004,
+        "applied_correction": 0.4818538452433002,
+        "matches": 1
+      },
+      {
+        "date": "2025-02-15",
+        "prior_residuals": 241,
+        "raw_bias_offset": 0.994476385750023,
+        "applied_correction": 0.4972381928750115,
+        "matches": 7
+      },
+      {
+        "date": "2025-02-16",
+        "prior_residuals": 248,
+        "raw_bias_offset": 0.7341188400263692,
+        "applied_correction": 0.3670594200131846,
+        "matches": 2
+      },
+      {
+        "date": "2025-02-19",
+        "prior_residuals": 250,
+        "raw_bias_offset": 0.686274228119589,
+        "applied_correction": 0.3431371140597945,
+        "matches": 1
+      },
+      {
+        "date": "2025-02-21",
+        "prior_residuals": 251,
+        "raw_bias_offset": 0.55904151548296,
+        "applied_correction": 0.27952075774148,
+        "matches": 1
+      },
+      {
+        "date": "2025-02-22",
+        "prior_residuals": 252,
+        "raw_bias_offset": 0.6064847845072716,
+        "applied_correction": 0.3032423922536358,
+        "matches": 7
+      },
+      {
+        "date": "2025-02-23",
+        "prior_residuals": 259,
+        "raw_bias_offset": 0.5142094689695784,
+        "applied_correction": 0.2571047344847892,
+        "matches": 2
+      },
+      {
+        "date": "2025-02-25",
+        "prior_residuals": 261,
+        "raw_bias_offset": 0.4979719216172187,
+        "applied_correction": 0.24898596080860935,
+        "matches": 4
+      },
+      {
+        "date": "2025-02-26",
+        "prior_residuals": 265,
+        "raw_bias_offset": 0.4395517222784096,
+        "applied_correction": 0.2197758611392048,
+        "matches": 5
+      },
+      {
+        "date": "2025-02-27",
+        "prior_residuals": 270,
+        "raw_bias_offset": 0.41491734039038886,
+        "applied_correction": 0.20745867019519443,
+        "matches": 1
+      },
+      {
+        "date": "2025-03-08",
+        "prior_residuals": 271,
+        "raw_bias_offset": 0.48178866464719156,
+        "applied_correction": 0.24089433232359578,
+        "matches": 6
+      },
+      {
+        "date": "2025-03-09",
+        "prior_residuals": 277,
+        "raw_bias_offset": 0.5600275479389504,
+        "applied_correction": 0.2800137739694752,
+        "matches": 3
+      },
+      {
+        "date": "2025-03-10",
+        "prior_residuals": 280,
+        "raw_bias_offset": 0.5346665266590434,
+        "applied_correction": 0.2673332633295217,
+        "matches": 1
+      },
+      {
+        "date": "2025-03-15",
+        "prior_residuals": 281,
+        "raw_bias_offset": 0.5954655469770754,
+        "applied_correction": 0.2977327734885377,
+        "matches": 5
+      },
+      {
+        "date": "2025-03-16",
+        "prior_residuals": 286,
+        "raw_bias_offset": 0.6521944738504879,
+        "applied_correction": 0.32609723692524395,
+        "matches": 3
+      },
+      {
+        "date": "2025-04-01",
+        "prior_residuals": 289,
+        "raw_bias_offset": 0.5892136298902168,
+        "applied_correction": 0.2946068149451084,
+        "matches": 3
+      },
+      {
+        "date": "2025-04-02",
+        "prior_residuals": 292,
+        "raw_bias_offset": 0.7230391984184774,
+        "applied_correction": 0.3615195992092387,
+        "matches": 6
+      },
+      {
+        "date": "2025-04-03",
+        "prior_residuals": 298,
+        "raw_bias_offset": 0.8274389998369491,
+        "applied_correction": 0.41371949991847456,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-05",
+        "prior_residuals": 299,
+        "raw_bias_offset": 0.8137733702747244,
+        "applied_correction": 0.4068866851373622,
+        "matches": 5
+      },
+      {
+        "date": "2025-04-06",
+        "prior_residuals": 304,
+        "raw_bias_offset": 0.7746528955881059,
+        "applied_correction": 0.38732644779405295,
+        "matches": 4
+      },
+      {
+        "date": "2025-04-07",
+        "prior_residuals": 308,
+        "raw_bias_offset": 0.74021311516271,
+        "applied_correction": 0.370106557581355,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-12",
+        "prior_residuals": 309,
+        "raw_bias_offset": 0.6849229812067796,
+        "applied_correction": 0.3424614906033898,
+        "matches": 5
+      },
+      {
+        "date": "2025-04-13",
+        "prior_residuals": 314,
+        "raw_bias_offset": 0.4908280722876854,
+        "applied_correction": 0.2454140361438427,
+        "matches": 4
+      },
+      {
+        "date": "2025-04-14",
+        "prior_residuals": 318,
+        "raw_bias_offset": 0.4714336079557583,
+        "applied_correction": 0.23571680397787914,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-16",
+        "prior_residuals": 319,
+        "raw_bias_offset": 0.3698589768083247,
+        "applied_correction": 0.18492948840416235,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-19",
+        "prior_residuals": 320,
+        "raw_bias_offset": 0.31952893080172245,
+        "applied_correction": 0.15976446540086123,
+        "matches": 5
+      },
+      {
+        "date": "2025-04-20",
+        "prior_residuals": 325,
+        "raw_bias_offset": 0.43416672171509685,
+        "applied_correction": 0.21708336085754842,
+        "matches": 4
+      },
+      {
+        "date": "2025-04-21",
+        "prior_residuals": 329,
+        "raw_bias_offset": 0.3391731661712882,
+        "applied_correction": 0.1695865830856441,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-22",
+        "prior_residuals": 330,
+        "raw_bias_offset": 0.42495776255151707,
+        "applied_correction": 0.21247888127575854,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-23",
+        "prior_residuals": 331,
+        "raw_bias_offset": 0.4457373635439292,
+        "applied_correction": 0.2228686817719646,
+        "matches": 1
+      },
+      {
+        "date": "2025-04-26",
+        "prior_residuals": 332,
+        "raw_bias_offset": 0.4719280554900447,
+        "applied_correction": 0.23596402774502234,
+        "matches": 5
+      },
+      {
+        "date": "2025-04-27",
+        "prior_residuals": 337,
+        "raw_bias_offset": 0.43967074494913516,
+        "applied_correction": 0.21983537247456758,
+        "matches": 2
+      },
+      {
+        "date": "2025-05-01",
+        "prior_residuals": 339,
+        "raw_bias_offset": 0.36856067158217193,
+        "applied_correction": 0.18428033579108596,
+        "matches": 1
+      },
+      {
+        "date": "2025-05-02",
+        "prior_residuals": 340,
+        "raw_bias_offset": 0.40912877514681456,
+        "applied_correction": 0.20456438757340728,
+        "matches": 1
+      },
+      {
+        "date": "2025-05-03",
+        "prior_residuals": 341,
+        "raw_bias_offset": 0.4550801848127759,
+        "applied_correction": 0.22754009240638795,
+        "matches": 4
+      },
+      {
+        "date": "2025-05-04",
+        "prior_residuals": 345,
+        "raw_bias_offset": 0.5463808924482525,
+        "applied_correction": 0.27319044622412625,
+        "matches": 4
+      },
+      {
+        "date": "2025-05-05",
+        "prior_residuals": 349,
+        "raw_bias_offset": 0.6503187440770112,
+        "applied_correction": 0.3251593720385056,
+        "matches": 1
+      },
+      {
+        "date": "2025-05-10",
+        "prior_residuals": 350,
+        "raw_bias_offset": 0.6491812529896579,
+        "applied_correction": 0.32459062649482895,
+        "matches": 5
+      },
+      {
+        "date": "2025-05-11",
+        "prior_residuals": 355,
+        "raw_bias_offset": 0.5081299083549188,
+        "applied_correction": 0.2540649541774594,
+        "matches": 5
+      },
+      {
+        "date": "2025-05-16",
+        "prior_residuals": 360,
+        "raw_bias_offset": 0.5298764408744587,
+        "applied_correction": 0.26493822043722937,
+        "matches": 2
+      },
+      {
+        "date": "2025-05-18",
+        "prior_residuals": 362,
+        "raw_bias_offset": 0.47388582832252213,
+        "applied_correction": 0.23694291416126106,
+        "matches": 5
+      },
+      {
+        "date": "2025-05-19",
+        "prior_residuals": 367,
+        "raw_bias_offset": 0.3735133575031885,
+        "applied_correction": 0.18675667875159424,
+        "matches": 1
+      },
+      {
+        "date": "2025-05-20",
+        "prior_residuals": 368,
+        "raw_bias_offset": 0.43008376449584895,
+        "applied_correction": 0.21504188224792448,
+        "matches": 2
+      },
+      {
+        "date": "2025-05-25",
+        "prior_residuals": 370,
+        "raw_bias_offset": 0.49320656753606007,
+        "applied_correction": 0.24660328376803003,
+        "matches": 10
+      }
+    ],
     "2025/26": [
       {
         "date": "2025-08-15",

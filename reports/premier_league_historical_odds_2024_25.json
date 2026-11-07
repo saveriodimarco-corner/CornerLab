@@ -1,0 +1,29 @@
+{
+  "attempted_now": 38,
+  "bankroll_real_enabled": false,
+  "catalog_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_event_catalog.json",
+  "completed_source_matches": 380,
+  "completed_with_odds_now": 38,
+  "credit_reserve": 10000,
+  "credits_spent_this_run": 380,
+  "error": null,
+  "event_not_found_now": 0,
+  "fixture_statuses": {
+    "complete": 840
+  },
+  "historical_credits_spent": 8649,
+  "maximum_credit_budget": 9000,
+  "mode": "historical_odds_backfill",
+  "model_refit": false,
+  "no_odds_now": 0,
+  "odds_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_corner_odds.parquet",
+  "production_database_writes": false,
+  "quota_remaining": 11227,
+  "real_betting_enabled": false,
+  "report_path": "/srv/cornerlab/reports/premier_league_historical_odds_backfill.json",
+  "requested_season": "2024/25",
+  "state_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_corner_odds_state.json",
+  "status": "complete",
+  "stop_reason": null,
+  "stored_odds_rows": 28004
+}

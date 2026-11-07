@@ -1,27 +1,27 @@
 {
-  "attempted_now": 74,
+  "attempted_now": 38,
   "bankroll_real_enabled": false,
   "catalog_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_event_catalog.json",
   "completed_source_matches": 380,
-  "completed_with_odds_now": 74,
-  "credit_reserve": 15000,
-  "credits_spent_this_run": 740,
+  "completed_with_odds_now": 38,
+  "credit_reserve": 10000,
+  "credits_spent_this_run": 380,
   "error": null,
   "event_not_found_now": 0,
   "fixture_statuses": {
-    "complete": 460
+    "complete": 840
   },
-  "historical_credits_spent": 4740,
-  "maximum_credit_budget": 5000,
+  "historical_credits_spent": 8649,
+  "maximum_credit_budget": 9000,
   "mode": "historical_odds_backfill",
   "model_refit": false,
   "no_odds_now": 0,
   "odds_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_corner_odds.parquet",
   "production_database_writes": false,
-  "quota_remaining": 15163,
+  "quota_remaining": 11227,
   "real_betting_enabled": false,
   "state_path": "/srv/cornerlab/data/provider_cache/premier_league_validation/historical_corner_odds_state.json",
   "status": "complete",
   "stop_reason": null,
-  "stored_odds_rows": 15610
+  "stored_odds_rows": 28004
 }

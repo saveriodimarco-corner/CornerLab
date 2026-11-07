@@ -50,6 +50,7 @@ TEAM_ALIASES = {
     "hull city": "hull",
     "ipswich town": "ipswich",
     "leeds united": "leeds",
+    "leicester city": "leicester",
     "manchester city": "man city",
     "manchester united": "man united",
     "newcastle united": "newcastle",

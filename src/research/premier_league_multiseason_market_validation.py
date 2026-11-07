@@ -31,7 +31,15 @@ from src.research.premier_league_market_validation import (
 )
 
 
-EVALUATION_SEASONS = ("2025/26", "2026/27")
+EVALUATION_SEASONS = (
+    "2024/25",
+    "2025/26",
+    "2026/27",
+)
+EXPECTED_EVALUATION_MATCHES = 840
+COVERAGE_GATE = (
+    "all_840_matches_have_odds"
+)
 SEASON_ORDER = (
     "2016/17",
     "2017/18",
@@ -447,10 +455,10 @@ def run_multiseason_market_validation(
         }
 
     gates = {
-        "all_460_matches_have_odds": (
+        COVERAGE_GATE: (
             odds["fixture_key"].nunique()
             == len(predictions)
-            == 460
+            == EXPECTED_EVALUATION_MATCHES
         ),
         "strict_walk_forward_training": True,
         "bias_at_most_0_5_each_season": all(
